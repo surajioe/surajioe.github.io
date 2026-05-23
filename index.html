@@ -100,14 +100,76 @@
 
     /* ── MAIN LAYOUT ── */
     main {
-      max-width: 740px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 64px 8vw 100px;
+      display: flex;
+      gap: 48px;
+      align-items: flex-start;
+    }
+
+    /* ── CATEGORY TABS (left sidebar) ── */
+    .category-tabs {
+      flex-shrink: 0;
+      width: 140px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      position: sticky;
+      top: 40px;
+    }
+
+    .tab {
+      display: block;
+      width: 100%;
+      padding: 10px 16px;
+      background: none;
+      border: none;
+      border-left: 2px solid var(--border);
+      text-align: left;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      border-left-color: rgba(232,197,71,0.4);
+      background: rgba(232,197,71,0.03);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(232,197,71,0.05);
+    }
+
+    .tab-count {
+      display: inline-block;
+      margin-left: 6px;
+      opacity: 0.5;
+      font-size: 10px;
+    }
+
+    /* ── POSTS PANEL ── */
+    .posts-panel {
+      flex: 1;
+      min-width: 0;
     }
 
     /* ── CATEGORY SECTION ── */
     .category {
-      margin-bottom: 72px;
+      display: none;
+    }
+
+    .category.active {
+      display: block;
+      animation: fadeUp 0.25s ease forwards;
     }
 
     .category-header {
@@ -249,24 +311,44 @@
       letter-spacing: 0.04em;
     }
 
-    /* ── FADE IN ── */
+    /* ── ANIMATIONS ── */
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(16px); }
+      from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
 
     .header-inner { animation: fadeUp 0.6s ease forwards; }
 
-    .category {
-      opacity: 0;
-      animation: fadeUp 0.6s ease forwards;
-    }
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      main {
+        flex-direction: column;
+        gap: 32px;
+        padding-top: 40px;
+      }
 
-    .category:nth-child(1) { animation-delay: 0.1s; }
-    .category:nth-child(2) { animation-delay: 0.2s; }
-    .category:nth-child(3) { animation-delay: 0.3s; }
-    .category:nth-child(4) { animation-delay: 0.4s; }
-    .category:nth-child(5) { animation-delay: 0.5s; }
+      .category-tabs {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        position: static;
+        border-left: none;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 16px;
+        gap: 4px;
+      }
+
+      .tab {
+        border-left: none;
+        border-bottom: 2px solid var(--border);
+        border-radius: 2px 2px 0 0;
+        padding: 8px 14px;
+      }
+
+      .tab.active {
+        border-bottom-color: var(--accent);
+      }
+    }
 
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 6px; }
@@ -288,51 +370,82 @@
 
   <main>
 
-    <!-- ── PYTHON ── -->
-    <section class="category">
-      <div class="category-header">
-        <span class="section-label">Python</span>
-        <div class="category-line"></div>
-        <span class="post-count">1 post</span>
-      </div>
-      <div class="posts-list">
-        <a href="async_python_blog.html" class="post-card">
-          <div class="post-card-meta">
-            <span class="tag">Python</span>
-            <span class="post-date">May 2025</span>
-          </div>
-          <h2>The Anatomy of Concurrent Python — A Deep Dive</h2>
-          <p>A thorough exploration of threads, event loops, and process pools in Python — when to use each, how they interact with the GIL, and how to build a backpressure-aware pipeline that stays stable at scale.</p>
-          <span class="post-arrow">→</span>
-        </a>
-      </div>
-    </section>
+    <!-- ── LEFT TAB NAV ── -->
+    <nav class="category-tabs" aria-label="Categories">
+      <button class="tab active" data-target="cat-python">
+        Python <span class="tab-count">1</span>
+      </button>
+      <button class="tab" data-target="cat-systems">
+        Systems <span class="tab-count">1</span>
+      </button>
+    </nav>
 
-    <!-- ── SYSTEMS ── -->
-    <section class="category">
-      <div class="category-header">
-        <span class="section-label">Systems</span>
-        <div class="category-line"></div>
-        <span class="post-count">1 post</span>
-      </div>
-      <div class="posts-list">
-        <a href="db_internals_guide.html" class="post-card">
-          <div class="post-card-meta">
-            <span class="tag">Databases</span>
-            <span class="post-date">May 2026</span>
-          </div>
-          <h2>Database Internals — First Principles</h2>
-          <p>A deep-dive reference covering the internals of 8 databases — PostgreSQL, Cassandra, Redis, MongoDB, Neo4j, Elasticsearch, InfluxDB, and Vector DBs — from storage engines and query models to the trade-offs that determine when each is the right choice.</p>
-          <span class="post-arrow">→</span>
-        </a>
-      </div>
-    </section>
+    <!-- ── POSTS PANEL ── -->
+    <div class="posts-panel">
 
+      <!-- ── PYTHON ── -->
+      <section class="category active" id="cat-python">
+        <div class="category-header">
+          <span class="section-label">Python</span>
+          <div class="category-line"></div>
+          <span class="post-count">1 post</span>
+        </div>
+        <div class="posts-list">
+          <a href="async_python_blog.html" class="post-card">
+            <div class="post-card-meta">
+              <span class="tag">Python</span>
+              <span class="post-date">May 2026</span>
+            </div>
+            <h2>The Anatomy of Concurrent Python — A Deep Dive</h2>
+            <p>A thorough exploration of threads, event loops, and process pools in Python — when to use each, how they interact with the GIL, and how to build a backpressure-aware pipeline that stays stable at scale.</p>
+            <span class="post-arrow">→</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- ── SYSTEMS ── -->
+      <section class="category" id="cat-systems">
+        <div class="category-header">
+          <span class="section-label">Systems</span>
+          <div class="category-line"></div>
+          <span class="post-count">1 post</span>
+        </div>
+        <div class="posts-list">
+          <a href="db_internals_guide.html" class="post-card">
+            <div class="post-card-meta">
+              <span class="tag">Databases</span>
+              <span class="post-date">May 2026</span>
+            </div>
+            <h2>Database Internals — First Principles</h2>
+            <p>A deep-dive reference covering the internals of 8 databases — PostgreSQL, Cassandra, Redis, MongoDB, Neo4j, Elasticsearch, InfluxDB, and Vector DBs — from storage engines and query models to the trade-offs that determine when each is the right choice.</p>
+            <span class="post-arrow">→</span>
+          </a>
+        </div>
+      </section>
+
+    </div>
   </main>
 
   <footer>
     <p>mrsurajpoudel@gmail.com</p>
   </footer>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    const sections = document.querySelectorAll('.category');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.target;
+
+        tabs.forEach(t => t.classList.remove('active'));
+        sections.forEach(s => s.classList.remove('active'));
+
+        tab.classList.add('active');
+        document.getElementById(target).classList.add('active');
+      });
+    });
+  </script>
 
 </body>
 </html>
