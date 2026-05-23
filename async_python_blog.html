@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Anatomy of Concurrent Python — A Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #1e1e2e;
+    --accent: #e8c547;
+    --accent2: #4fc4cf;
+    --accent3: #e05c5c;
+    --text: #d4d4e8;
+    --text-dim: #7070a0;
+    --text-bright: #f0f0ff;
+    --code-bg: #0d0d14;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    line-height: 1.8;
+    font-size: 17px;
+    overflow-x: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 6vw;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.4;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black, transparent);
+  }
+
+  .header-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,197,71,0.08) 0%, transparent 70%);
+    top: -100px;
+    right: -100px;
+    pointer-events: none;
+  }
+
+  .header-glow2 {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(79,196,207,0.06) 0%, transparent 70%);
+    bottom: 0;
+    left: 10%;
+    pointer-events: none;
+  }
+
+  .tag {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(232,197,71,0.3);
+    padding: 5px 14px;
+    border-radius: 2px;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(38px, 6vw, 72px);
+    font-weight: 900;
+    line-height: 1.05;
+    color: var(--text-bright);
+    max-width: 800px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 28px;
+  }
+
+  h1 em {
+    color: var(--accent);
+    font-style: italic;
+  }
+
+  .subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
+    line-height: 1.7;
+  }
+
+  .meta {
+    display: flex;
+    gap: 32px;
+    margin-top: 48px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .meta-item {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .meta-item span {
+    display: block;
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  .result-banner {
+    position: relative;
+    z-index: 1;
+    margin-top: 56px;
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  .result-item {
+    padding: 14px 24px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .result-item:last-child { border-right: none; }
+
+  .result-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .result-value {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .result-item.slow .result-value { color: var(--accent3); }
+  .result-item.mid .result-value { color: var(--accent); }
+  .result-item.fast .result-value { color: var(--accent2); }
+
+  /* ── LAYOUT ── */
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 6vw;
+  }
+
+  .wide-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 6vw;
+  }
+
+  article {
+    padding: 80px 0 120px;
+  }
+
+  /* ── SECTIONS ── */
+  .chapter {
+    margin-bottom: 80px;
+  }
+
+  .chapter-number {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chapter-number::after {
+    content: '';
+    height: 1px;
+    width: 40px;
+    background: var(--accent);
+    opacity: 0.4;
+    display: inline-block;
+  }
+
+  h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(26px, 3.5vw, 38px);
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.2;
+    margin-bottom: 28px;
+  }
+
+  h2 em { color: var(--accent2); font-style: italic; }
+
+  h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin: 40px 0 16px;
+  }
+
+  p {
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+
+  strong { color: var(--text-bright); font-weight: 500; }
+
+  a { color: var(--accent2); text-decoration: none; border-bottom: 1px solid rgba(79,196,207,0.3); }
+
+  /* ── CODE ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 28px 32px;
+    overflow-x: auto;
+    margin: 32px 0;
+    position: relative;
+  }
+
+  pre.accent2 { border-left-color: var(--accent2); }
+  pre.accent3 { border-left-color: var(--accent3); }
+
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #c9d1d9;
+  }
+
+  p code, li code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: var(--accent2);
+  }
+
+  .code-comment { color: #484870; }
+  .code-keyword { color: #e8c547; }
+  .code-string { color: #7ec899; }
+  .code-number { color: #4fc4cf; }
+  .code-fn { color: #d2a8ff; }
+  .code-highlight { color: #f0f0ff; font-weight: 500; }
+
+  /* ── CALLOUTS ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin: 36px 0;
+    position: relative;
+  }
+
+  .callout::before {
+    content: attr(data-label);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    position: absolute;
+    top: -1px;
+    left: 20px;
+    background: var(--bg);
+    padding: 0 8px;
+    transform: translateY(-50%);
+  }
+
+  .callout.warn { border-color: rgba(224,92,92,0.4); }
+  .callout.warn::before { color: var(--accent3); }
+  .callout.info { border-color: rgba(79,196,207,0.3); }
+  .callout.info::before { color: var(--accent2); }
+  .callout.insight { border-color: rgba(232,197,71,0.3); }
+  .callout.insight::before { color: var(--accent); }
+
+  /* ── COMPARISON TABLE ── */
+  .comparison {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-size: 14px;
+  }
+
+  .comparison th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .comparison td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(30,30,46,0.6);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+
+  .comparison tr:last-child td { border-bottom: none; }
+  .comparison tr:hover td { background: var(--surface); }
+
+  .comparison td:first-child {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    white-space: nowrap;
+  }
+
+  /* ── ARCHITECTURE DIAGRAM ── */
+  .arch-diagram {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    margin: 32px 0;
+    overflow-x: auto;
+  }
+
+  .arch-diagram pre {
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 64px 0;
+  }
+
+  /* ── TIMELINE ── */
+  .timeline {
+    position: relative;
+    padding-left: 28px;
+    margin: 32px 0;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -32px;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+  }
+
+  .timeline-item.blue::before { background: var(--accent2); }
+  .timeline-item.red::before { background: var(--accent3); }
+
+  /* ── PULL QUOTE ── */
+  blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 4px 28px;
+    margin: 40px 0;
+  }
+
+  blockquote p {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-style: italic;
+    color: var(--text-bright);
+    line-height: 1.5;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px 6vw;
+    text-align: center;
+  }
+
+  footer p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  header > * { animation: fadeUp 0.7s ease forwards; }
+  header .tag { animation-delay: 0.1s; opacity: 0; }
+  header h1 { animation-delay: 0.2s; opacity: 0; }
+  header .subtitle { animation-delay: 0.3s; opacity: 0; }
+  header .meta { animation-delay: 0.4s; opacity: 0; }
+  header .result-banner { animation-delay: 0.5s; opacity: 0; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-grid"></div>
+  <div class="header-glow"></div>
+  <div class="header-glow2"></div>
+  <div class="tag">Deep Dive · Python Concurrency</div>
+  <h1>The Anatomy of <em>Concurrent</em> Python</h1>
+  <p class="subtitle">A story about threads, event loops, process pools, backpressure — and what happens when you get any of it wrong at scale.</p>
+  <div class="meta">
+    <div class="meta-item">Topic<span>Asyncio · Threading · IPC</span></div>
+    <div class="meta-item">Level<span>Intermediate → Advanced</span></div>
+    <div class="meta-item">Read time<span>~18 minutes</span></div>
+  </div>
+  <div class="result-banner">
+    <div class="result-item slow"><span class="result-label">Single-threaded</span><span class="result-value">2454ms</span></div>
+    <div class="result-item mid"><span class="result-label">Multi-threaded</span><span class="result-value">1058ms</span></div>
+    <div class="result-item fast"><span class="result-label">Async</span><span class="result-value">736ms</span></div>
+  </div>
+</header>
+
+<article>
+<div class="container">
+
+  <!-- CHAPTER 1 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 01</div>
+    <h2>Three Numbers That <em>Tell a Story</em></h2>
+
+    <p>It starts innocently enough. You have a list of URLs. You want to download them. You write a loop. It works. Then someone asks why it's slow, and you fall down a rabbit hole that ends with you understanding exactly how Python schedules work across threads, coroutines, and operating system processes.</p>
+
+    <p>Those three benchmark numbers at the top of this page — 2454ms, 1058ms, 736ms — are not just performance figures. They are a window into three fundamentally different models of concurrent execution. Each one has a story, and understanding that story is the difference between writing code that happens to work and code that works for a reason.</p>
+
+    <p>Let's start with the slowest.</p>
+
+    <h3>The Sequential Trap</h3>
+
+    <p>The single-threaded result of 2454ms comes from code that looks harmless:</p>
+
+<pre><code><span class="code-comment"># Looks fine. Runs sequentially.</span>
+<span class="code-keyword">for</span> url <span class="code-keyword">in</span> urls:
+    downloader.<span class="code-fn">download_files</span>([url])</code></pre>
+
+    <p>The problem is what happens inside that loop. Each call to <code>download_files</code> opens a connection, waits for the server to respond, reads the response, and only then returns. While it waits — and for network I/O, waiting is most of the work — your CPU is doing exactly nothing. It's sat there, perfectly capable of issuing a dozen more requests, blocked behind a single one.</p>
+
+    <p>The total time is roughly the sum of all individual request times. With three URLs each taking around 800ms, you get 2400ms. This is called <strong>I/O-bound sequential execution</strong>, and it is the most common performance bug in networked Python code.</p>
+
+    <blockquote>
+      <p>The CPU isn't slow. The network isn't slow. The code is slow — because it refuses to do two things at once.</p>
+    </blockquote>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 2 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 02</div>
+    <h2>Enter Threads — <em>And the GIL</em></h2>
+
+    <p>The multi-threaded version cuts the time almost in half: 1058ms. The <code>ThreadPoolExecutor</code> fires all three requests roughly simultaneously, and the wall-clock time collapses to approximately the slowest individual request rather than their sum.</p>
+
+<pre><code><span class="code-keyword">with</span> <span class="code-fn">ThreadPoolExecutor</span>(max_workers=<span class="code-number">10</span>) <span class="code-keyword">as</span> executor:
+    futures = {url: executor.<span class="code-fn">submit</span>(self.download_file, url) <span class="code-keyword">for</span> url <span class="code-keyword">in</span> urls}
+    <span class="code-keyword">for</span> url, future <span class="code-keyword">in</span> futures.items():
+        download_result[url] = future.<span class="code-fn">result</span>()</code></pre>
+
+    <p>This is the correct instinct. But threads carry baggage.</p>
+
+    <h3>What the GIL Actually Means Here</h3>
+
+    <p>Python has the Global Interpreter Lock — a mutex that allows only one thread to execute Python bytecode at a time. If you've heard that "threads don't help in Python," this is why. But that statement is misleading for I/O-bound work, and understanding the nuance matters.</p>
+
+    <p>When a thread makes a network request, it calls into the OS kernel and <strong>releases the GIL while it waits</strong>. The OS takes over the socket operation. During that wait, other Python threads are free to execute. So for I/O-bound work, threads genuinely run concurrently — just not on the CPU side.</p>
+
+    <table class="comparison">
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>GIL impact</th>
+          <th>Threads useful?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Network I/O</td>
+          <td>GIL released during wait</td>
+          <td>Yes — genuine concurrency</td>
+        </tr>
+        <tr>
+          <td>File I/O</td>
+          <td>GIL released during syscall</td>
+          <td>Yes — genuine concurrency</td>
+        </tr>
+        <tr>
+          <td>Pure Python CPU work</td>
+          <td>GIL held, preempted every ~5ms</td>
+          <td>No — contention overhead</td>
+        </tr>
+        <tr>
+          <td>NumPy / C extensions</td>
+          <td>Many release GIL internally</td>
+          <td>Sometimes — depends on library</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Why Threads Still Lose to Async</h3>
+
+    <p>The ~320ms gap between threads (1058ms) and async (736ms) comes from thread overhead. Every OS thread carries an 1–8MB stack, requires OS scheduling decisions, and involves context switches that cost 1–10 microseconds each. With three URLs this is modest. With ten thousand, it becomes catastrophic — you cannot spin up 10,000 OS threads without exhausting memory and grinding the scheduler to a halt.</p>
+
+    <p>Threads hit a wall that async does not. That's the story the 736ms result is telling.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 3 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 03</div>
+    <h2>The Event Loop — <em>One Thread to Rule Them All</em></h2>
+
+    <p>The async result of 736ms comes from a fundamentally different execution model. Not more threads — fewer. Exactly one.</p>
+
+    <p>The asyncio event loop runs on a single thread. It maintains a queue of coroutines that are ready to execute and a registry of things it's waiting on — timers, sockets, futures. On each iteration, it checks what's ready, runs those coroutines until they voluntarily yield, then checks again.</p>
+
+    <p>The critical word is <strong>voluntarily</strong>. Coroutines yield with the <code>await</code> keyword. When you write:</p>
+
+<pre class="accent2"><code>async with session.<span class="code-fn">get</span>(url) <span class="code-keyword">as</span> response:
+    <span class="code-keyword">return await</span> response.<span class="code-fn">read</span>()</code></pre>
+
+    <p>Each <code>await</code> is a contract: "I have nothing useful to do right now. Event loop, go run something else. Wake me when my data arrives." The event loop obliges. It switches to another coroutine — at essentially zero cost, because there's no OS involvement, no stack swap, just a function call.</p>
+
+    <h3>A Common Misconception About <code>asyncio.gather</code></h3>
+
+    <p>When you write:</p>
+
+<pre><code><span class="code-keyword">await</span> asyncio.<span class="code-fn">gather</span>(
+    self.<span class="code-fn">_producer</span>(urls, session),
+    self.<span class="code-fn">_consumer</span>(results, total),
+)</code></pre>
+
+    <p>It is tempting to think this spawns two threads. It does not. Both coroutines run on the same thread, in the same event loop, with no GIL interaction whatsoever. They interleave by taking turns at <code>await</code> boundaries:</p>
+
+<pre class="accent2"><code><span class="code-comment"># What actually happens:</span>
+iteration 1: resume _producer → hits await queue.put()  → suspend
+iteration 2: resume _consumer → hits await queue.get()  → suspend
+iteration 3: resume _producer → fetch completed         → puts item → suspend
+iteration 4: resume _consumer → item available          → processes  → suspend
+...</code></pre>
+
+    <p>The GIL is irrelevant here. There is only one thread — it is never contested.</p>
+
+    <div class="callout warn" data-label="Critical Warning">
+      <p>Because there is only one thread, <strong>any synchronous CPU-bound code blocks the entire event loop</strong>. A 500ms JSON parse inside an async function freezes every other coroutine for 500ms. The OS cannot preempt it. Only an <code>await</code> can yield control — and CPU work doesn't <code>await</code> anything.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 4 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 04</div>
+    <h2>The Bridge — <em><code>run_in_executor</code> Explained</em></h2>
+
+    <p>So async is ideal for I/O, but breaks down the moment you need CPU work. The solution is a bridge between the async world and a pool of OS processes. That bridge is <code>loop.run_in_executor()</code>.</p>
+
+<pre><code>processed_data = <span class="code-keyword">await</span> loop.<span class="code-fn">run_in_executor</span>(
+    self._process_pool,
+    <span class="code-fn">partial</span>(cpu_bound_task, data)
+)</code></pre>
+
+    <p>This single line does more than it appears. Let's dissect each piece.</p>
+
+    <h3>Step 1 — <code>partial(cpu_bound_task, data)</code></h3>
+
+    <p>The <code>ProcessPoolExecutor</code> sends work to separate OS processes via pickle serialisation. This means the function and its arguments must be picklable. Lambdas are not picklable. Instance methods with non-picklable state are not picklable. <code>functools.partial</code> wrapping a top-level function with plain data is.</p>
+
+    <p>This constraint is not obvious and causes real bugs in production.</p>
+
+<pre class="accent3"><code><span class="code-comment"># FAILS — lambda not picklable</span>
+loop.<span class="code-fn">run_in_executor</span>(pool, <span class="code-keyword">lambda</span>: <span class="code-fn">cpu_bound_task</span>(data))
+
+<span class="code-comment"># FAILS — instance method with unpicklable state</span>
+loop.<span class="code-fn">run_in_executor</span>(pool, self._process)
+
+<span class="code-comment"># WORKS — top-level function + partial</span>
+loop.<span class="code-fn">run_in_executor</span>(pool, <span class="code-fn">partial</span>(cpu_bound_task, data))</code></pre>
+
+    <h3>Step 2 — What the Event Loop Does</h3>
+
+    <p>Internally, <code>run_in_executor</code> calls <code>pool.submit(fn)</code> which returns a <code>concurrent.futures.Future</code>. It then wraps that into an <code>asyncio.Future</code>. These are different types — the former blocks when you call <code>.result()</code>, the latter suspends a coroutine when you <code>await</code> it.</p>
+
+    <p>The <code>await</code> suspends this coroutine and registers a callback: "when the process pool future resolves, set the result on the asyncio future and reschedule this coroutine." The event loop is then free to run everything else.</p>
+
+    <div class="arch-diagram">
+<pre><code>Event Loop Thread          Worker Process
+──────────────────         ──────────────────────
+await run_in_executor()
+  → submit to pool    ───► pickle(partial(cpu_bound_task, data))
+  → suspend coroutine      unpickle in worker process
+  → run other work         cpu_bound_task(data) executes
+  → run other work         (GIL in THIS process — irrelevant to main)
+  → run other work         done → pickle(result)
+  ← future resolves   ◄─── send result back via IPC
+  → resume coroutine
+processed_data = result</code></pre>
+    </div>
+
+    <h3>Step 3 — The Hidden Cost</h3>
+
+    <p>Every call to <code>run_in_executor</code> pays a serialisation tax twice — once for the input data travelling to the worker, once for the result travelling back. For large payloads (>10MB) or fast CPU tasks (<10ms), this IPC overhead can exceed the benefit of offloading. It's not a silver bullet — it's a tool for the right situation.</p>
+
+    <table class="comparison">
+      <thead>
+        <tr><th>Condition</th><th>Use ProcessPoolExecutor?</th><th>Reason</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>CPU work > 50ms</td><td>Yes</td><td>Pool overhead is amortised</td></tr>
+        <tr><td>CPU work &lt; 10ms</td><td>No</td><td>Pickle cost dominates</td></tr>
+        <tr><td>Result &gt; 10MB</td><td>Careful</td><td>Pickle cost scales with size</td></tr>
+        <tr><td>NumPy / pandas</td><td>Maybe</td><td>They release GIL — ThreadPool may suffice</td></tr>
+        <tr><td>Pure Python CPU</td><td>Yes</td><td>Full GIL escape, genuine parallelism</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 5 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 05</div>
+    <h2>Backpressure — <em>The Part Everyone Gets Wrong</em></h2>
+
+    <p>Here is where most implementations quietly fall apart at scale. The pattern of async I/O feeding a CPU-bound process pool sounds clean in theory. In practice, without deliberate flow control, you have built a time bomb.</p>
+
+    <h3>What Happens Without a Bounded Queue</h3>
+
+    <p>Imagine 10,000 URLs. Your async producer is fast — it can fire all 10,000 requests and have results back in memory within seconds. Your process pool has 4 workers and each task takes 500ms. The math is brutal:</p>
+
+<pre class="accent3"><code><span class="code-comment"># Fetch rate:  ~1000 URLs / second (async, 10 concurrent)</span>
+<span class="code-comment"># CPU rate:    4 workers × 2 tasks/sec = 8 tasks / second</span>
+<span class="code-comment"># Queue growth: 1000 - 8 = 992 items accumulating per second</span>
+
+<span class="code-comment"># After 10 seconds:</span>
+<span class="code-comment"># → 9920 items in memory</span>
+<span class="code-comment"># → each at 1MB payload = ~10GB of raw bytes</span>
+<span class="code-comment"># → plus pickled copies awaiting IPC</span>
+<span class="code-comment"># → plus 9920 asyncio.Futures registered on event loop</span>
+<span class="code-comment"># → OOM or catastrophic GC pressure</span></code></pre>
+
+    <p>And it gets worse. <code>ProcessPoolExecutor</code>'s internal work queue is a <code>SimpleQueue</code> with no size limit. Calling <code>run_in_executor</code> immediately pickles the data and pushes it into that queue. So you don't just have unprocessed results sitting in memory — you have <em>pickled copies</em> of all of them serialised and waiting. Your memory consumption multiplies.</p>
+
+    <blockquote>
+      <p><code>run_in_executor</code> provides zero backpressure. It accepts work unconditionally. The queue is your responsibility.</p>
+    </blockquote>
+
+    <h3>The Fix — A Bounded <code>asyncio.Queue</code></h3>
+
+    <p>An <code>asyncio.Queue</code> with a <code>maxsize</code> is the correct backpressure mechanism. When the queue is full, <code>await queue.put(item)</code> suspends the producer coroutine. The event loop cannot deliver more items until the consumer pulls one out. This creates natural flow control with zero polling or sleep calls.</p>
+
+<pre class="accent2"><code><span class="code-comment"># Producer stalls automatically when queue is full</span>
+<span class="code-keyword">await</span> self._queue.<span class="code-fn">put</span>((url, data))  <span class="code-comment"># ← suspends if maxsize reached</span>
+
+<span class="code-comment"># Consumer frees space, producer resumes</span>
+item = <span class="code-keyword">await</span> self._queue.<span class="code-fn">get</span>()       <span class="code-comment"># ← frees a slot</span></code></pre>
+
+    <h3>Sizing the Queue Correctly</h3>
+
+    <p>There is a common mistake in queue sizing formulas. The queue does not exist to compensate for a throughput mismatch — <strong>you cannot buffer your way out of a rate imbalance</strong>. If your fetch rate exceeds your CPU rate, no queue size will save you. The queue's job is to smooth over transient latency spikes.</p>
+
+    <p>The correct approach has two steps. First, set your semaphore to cap the fetch rate at or below the CPU throughput:</p>
+
+<pre><code>cpu_workers = <span class="code-number">4</span>
+fetch_time_ms = <span class="code-number">100</span>
+cpu_time_ms = <span class="code-number">500</span>
+
+<span class="code-comment"># How many concurrent fetches can CPU keep up with?</span>
+max_concurrent_fetches = <span class="code-fn">max</span>(<span class="code-number">1</span>, <span class="code-fn">int</span>(cpu_workers * (fetch_time_ms / cpu_time_ms)))
+<span class="code-comment"># = max(1, int(4 × 0.2)) = 1</span>
+
+<span class="code-comment"># Queue only needs to buffer in-flight fetches + small spike room</span>
+queue_maxsize = max_concurrent_fetches + cpu_workers
+<span class="code-comment"># = 1 + 4 = 5</span>
+
+semaphore = asyncio.<span class="code-fn">Semaphore</span>(max_concurrent_fetches)  <span class="code-comment"># rate control</span>
+queue = asyncio.<span class="code-fn">Queue</span>(maxsize=queue_maxsize)           <span class="code-comment"># spike buffer</span></code></pre>
+
+    <p>With this in place, memory consumption becomes <strong>constant</strong> regardless of how many URLs you process. The system self-regulates rather than accumulating unboundedly.</p>
+
+    <div class="callout insight" data-label="Key Insight">
+      <p>The formula <code>cpu_workers × (fetch_time / cpu_time)</code> gives the correct value for <code>max_concurrent_fetches</code> — not for <code>queue_maxsize</code>. It controls how many fetches can run simultaneously while keeping CPU workers fully fed without overflow. This is a semaphore value, not a queue size.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 6 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 06</div>
+    <h2>The Full Architecture — <em>Three Gates, One Pipeline</em></h2>
+
+    <p>When you put all the pieces together, the system has three distinct control points, each governing a different resource:</p>
+
+    <div class="arch-diagram">
+<pre><code>URLs
+  │
+  ▼
+[Semaphore — controls network connections]
+  max_concurrent_fetches = cpu_workers × (fetch_time / cpu_time)
+  │
+  ▼ (raw bytes)
+[asyncio.Queue — controls memory / backpressure]
+  maxsize = max_concurrent_fetches + cpu_workers
+  │  producer blocks here when full
+  ▼
+[ProcessPoolExecutor — controls CPU core utilisation]
+  cpu_workers = number of physical cores
+  internal _work_queue is unbounded — never reaches it at volume
+  because asyncio.Queue gates all input
+  │
+  ▼
+final results dict</code></pre>
+    </div>
+
+    <p>Each gate is necessary. Remove the semaphore and your network stack gets hammered. Remove the queue size limit and memory explodes before CPU work starts. Remove the process pool and CPU work blocks the event loop.</p>
+
+    <h3>The Complete Implementation</h3>
+
+<pre><code><span class="code-keyword">import</span> asyncio
+<span class="code-keyword">import</span> aiohttp
+<span class="code-keyword">from</span> concurrent.futures <span class="code-keyword">import</span> ProcessPoolExecutor
+<span class="code-keyword">from</span> functools <span class="code-keyword">import</span> partial
+
+<span class="code-comment"># Top-level: required for pickle across process boundary</span>
+<span class="code-keyword">def</span> <span class="code-fn">cpu_bound_task</span>(data: bytes) -> dict:
+    <span class="code-keyword">import</span> json
+    <span class="code-keyword">return</span> json.<span class="code-fn">loads</span>(data)
+
+<span class="code-keyword">class</span> <span class="code-fn">AsyncFileDownloaderWithProcessing</span>:
+    <span class="code-keyword">def</span> <span class="code-fn">__init__</span>(self, cpu_workers=<span class="code-number">4</span>, fetch_time_ms=<span class="code-number">100</span>, cpu_time_ms=<span class="code-number">500</span>):
+        max_fetches = <span class="code-fn">max</span>(<span class="code-number">1</span>, <span class="code-fn">int</span>(cpu_workers * (fetch_time_ms / cpu_time_ms)))
+        self._semaphore = asyncio.<span class="code-fn">Semaphore</span>(max_fetches)
+        self._queue = asyncio.<span class="code-fn">Queue</span>(maxsize=max_fetches + cpu_workers)
+        self._pool = <span class="code-fn">ProcessPoolExecutor</span>(max_workers=cpu_workers)
+
+    <span class="code-keyword">async def</span> <span class="code-fn">_fetch</span>(self, url, session):
+        <span class="code-keyword">async with</span> self._semaphore:
+            <span class="code-keyword">async with</span> session.<span class="code-fn">get</span>(url) <span class="code-keyword">as</span> r:
+                <span class="code-keyword">return</span> url, <span class="code-keyword">await</span> r.<span class="code-fn">read</span>() <span class="code-keyword">if</span> r.status == <span class="code-number">200</span> <span class="code-keyword">else</span> <span class="code-fn">Exception</span>(r.status)
+
+    <span class="code-keyword">async def</span> <span class="code-fn">_producer</span>(self, urls, session):
+        <span class="code-keyword">for</span> coro <span class="code-keyword">in</span> asyncio.<span class="code-fn">as_completed</span>([self.<span class="code-fn">_fetch</span>(u, session) <span class="code-keyword">for</span> u <span class="code-keyword">in</span> urls]):
+            <span class="code-keyword">await</span> self._queue.<span class="code-fn">put</span>(<span class="code-keyword">await</span> coro)  <span class="code-comment"># stalls if queue full</span>
+        <span class="code-keyword">await</span> self._queue.<span class="code-fn">put</span>(<span class="code-keyword">None</span>)             <span class="code-comment"># sentinel</span>
+
+    <span class="code-keyword">async def</span> <span class="code-fn">_consumer</span>(self, results, total):
+        loop = asyncio.<span class="code-fn">get_running_loop</span>()
+        processed = <span class="code-number">0</span>
+        <span class="code-keyword">while</span> processed < total:
+            item = <span class="code-keyword">await</span> self._queue.<span class="code-fn">get</span>()
+            <span class="code-keyword">if</span> item <span class="code-keyword">is None</span>: <span class="code-keyword">break</span>
+            url, data = item
+            <span class="code-keyword">if</span> <span class="code-fn">isinstance</span>(data, Exception):
+                results[url] = data
+            <span class="code-keyword">else</span>:
+                <span class="code-comment"># yield to event loop; resume when process finishes</span>
+                results[url] = <span class="code-keyword">await</span> loop.<span class="code-fn">run_in_executor</span>(
+                    self._pool, <span class="code-fn">partial</span>(cpu_bound_task, data)
+                )
+            processed += <span class="code-number">1</span>
+
+    <span class="code-keyword">async def</span> <span class="code-fn">__aenter__</span>(self): <span class="code-keyword">return</span> self
+
+    <span class="code-keyword">async def</span> <span class="code-fn">__aexit__</span>(self, *args):
+        self._pool.<span class="code-fn">shutdown</span>(wait=<span class="code-keyword">True</span>)  <span class="code-comment"># clean process teardown</span></code></pre>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 7 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 07</div>
+    <h2>The Bugs That <em>Hide in Plain Sight</em></h2>
+
+    <p>The original code that started this journey had several subtle bugs worth examining — not because they caused obvious crashes, but because they degrade silently under load.</p>
+
+    <h3>Bug 1 — Semaphore Inside the Retry Loop</h3>
+
+<pre class="accent3"><code><span class="code-keyword">for</span> attempt <span class="code-keyword">in</span> range(self._max_retries):
+    <span class="code-keyword">async with</span> self._semaphore:         <span class="code-comment"># re-acquired each retry</span>
+        <span class="code-keyword">async with</span> session.<span class="code-fn">get</span>(url) <span class="code-keyword">as</span> response:
+            <span class="code-keyword">if</span> response.status != <span class="code-number">200</span>:
+                ex = <span class="code-fn">Exception</span>(response)
+                <span class="code-comment"># falls through — retries immediately, no backoff</span></code></pre>
+
+    <p>A non-200 response sets <code>ex</code> and falls through to the next loop iteration without any <code>await</code> between retries. This means all retry attempts execute as fast as the CPU can run, re-acquiring the semaphore on each attempt. Under high failure rates, this starves other coroutines waiting for a semaphore slot. Add exponential backoff with <code>await asyncio.sleep(2 ** attempt)</code> between retries.</p>
+
+    <h3>Bug 2 — <code>ClientTimeout</code> Applied Twice</h3>
+
+    <p>The <code>AsyncFileDownloader</code> creates a <code>ClientSession</code> with a session-level timeout, then also passes <code>timeout=self._timeout</code> to each individual <code>session.get()</code> call. The per-request timeout overrides the session timeout, making the session-level setting meaningless. More critically, <code>ClientTimeout</code> is used but never imported — this raises a <code>NameError</code> at runtime, not a graceful timeout.</p>
+
+    <h3>Bug 3 — <code>return_exceptions=False</code> in gather</h3>
+
+<pre class="accent3"><code>results = <span class="code-keyword">await</span> asyncio.<span class="code-fn">gather</span>(*tasks, return_exceptions=<span class="code-keyword">False</span>)</code></pre>
+
+    <p>With <code>return_exceptions=False</code> (the default), a single exception from any task cancels all remaining tasks and propagates immediately. For a URL downloader, one bad URL aborts all in-flight downloads. The correct approach is <code>return_exceptions=True</code>, which returns exceptions as values in the results list for you to handle per-URL.</p>
+
+    <h3>Bug 4 — Process Pool Lifecycle</h3>
+
+    <p>If the <code>ProcessPoolExecutor</code> is shut down before all coroutines have finished — through an unhandled exception, early return, or missing context manager — any pending <code>await loop.run_in_executor()</code> calls raise <code>RuntimeError: cannot schedule new futures after shutdown</code>. This exception doesn't surface through normal <code>aiohttp</code> error handling. Always tie the pool lifecycle to an <code>async with</code> context manager.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 8 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 08</div>
+    <h2>Scaling Beyond One Process — <em>The Full Picture</em></h2>
+
+    <p>Everything so far operates within a single Python process. That is appropriate for I/O-bound work with moderate CPU processing. But there are cases where you need to saturate multiple CPU cores with both I/O and CPU work simultaneously. The architecture changes.</p>
+
+    <p>A single event loop cannot use multiple CPU cores. This is a fundamental constraint. To scale across cores, you need multiple processes — each running their own event loop. <code>multiprocessing</code> handles the cross-process coordination:</p>
+
+<pre><code><span class="code-keyword">from</span> multiprocessing <span class="code-keyword">import</span> Pool
+<span class="code-keyword">import</span> asyncio
+
+<span class="code-keyword">def</span> <span class="code-fn">worker</span>(urls_chunk):
+    <span class="code-comment"># Each process gets its own event loop</span>
+    <span class="code-keyword">async def</span> <span class="code-fn">run</span>():
+        <span class="code-keyword">async with</span> <span class="code-fn">AsyncFileDownloaderWithProcessing</span>() <span class="code-keyword">as</span> d:
+            <span class="code-keyword">return await</span> d.<span class="code-fn">download_and_process</span>(urls_chunk)
+    <span class="code-keyword">return</span> asyncio.<span class="code-fn">run</span>(<span class="code-fn">run</span>())
+
+<span class="code-comment"># Split URLs across CPU cores</span>
+<span class="code-keyword">with</span> <span class="code-fn">Pool</span>(processes=os.cpu_count()) <span class="code-keyword">as</span> pool:
+    chunks = <span class="code-fn">chunk</span>(urls, size=<span class="code-fn">len</span>(urls) // os.<span class="code-fn">cpu_count</span>())
+    all_results = pool.<span class="code-fn">map</span>(worker, chunks)</code></pre>
+
+    <p>This gives you async concurrency within each process and true CPU parallelism across processes. <code>ThreadPoolExecutor</code> alone cannot achieve this — it is limited by the GIL for CPU work and limited by OS thread caps for I/O work. It sits in an awkward middle ground at extreme scale.</p>
+
+    <table class="comparison">
+      <thead>
+        <tr><th>Scale</th><th>Recommended approach</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>&lt; 100 URLs</td><td>Async with aiohttp — simplest, fast enough</td></tr>
+        <tr><td>100 – 10k URLs</td><td>Async + ProcessPoolExecutor for CPU work, bounded queue</td></tr>
+        <tr><td>&gt; 10k URLs</td><td>Multiple processes, each with async event loop + process pool</td></tr>
+        <tr><td>100k+ URLs</td><td>Distributed system (Celery, Ray, or equivalent)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout info" data-label="Final Observation">
+      <p>The async vs threads debate is often framed as a competition. It isn't. Async handles I/O concurrency with minimal resources. Threads provide OS-level preemption for mixed workloads. Processes escape the GIL for CPU parallelism. The real skill is knowing which tool governs which resource — and building systems where each resource has exactly one control point that can be reasoned about independently.</p>
+    </div>
+  </div>
+
+</div>
+</article>
+
+<footer>
+  <p>Written as a technical deep dive into Python concurrency — threads, coroutines, process pools, backpressure, and the GIL.</p>
+</footer>
+
+</body>
+</html>
