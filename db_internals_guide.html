@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Internals — First Principles</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #070710;
+    --surface: #0e0e1a;
+    --surface2: #16162a;
+    --surface3: #1e1e35;
+    --border: #252540;
+    --border2: #2e2e50;
+    --text: #dcdcf0;
+    --muted: #6868a0;
+    --faint: #3a3a60;
+
+    /* DB colors */
+    --pg: #336791;
+    --pg-light: #5a9fd4;
+    --pg-glow: rgba(51,103,145,0.15);
+
+    --cassandra: #1287b1;
+    --cassandra-light: #4ab8e0;
+    --cassandra-glow: rgba(18,135,177,0.12);
+
+    --redis: #dc382d;
+    --redis-light: #ff6b5b;
+    --redis-glow: rgba(220,56,45,0.12);
+
+    --mongo: #00ed64;
+    --mongo-light: #5fff9a;
+    --mongo-glow: rgba(0,237,100,0.08);
+
+    --neo4j: #f5a623;
+    --neo4j-light: #ffc96b;
+    --neo4j-glow: rgba(245,166,35,0.1);
+
+    --elastic: #f04e98;
+    --elastic-light: #ff85be;
+    --elastic-glow: rgba(240,78,152,0.1);
+
+    --influx: #22adf6;
+    --influx-light: #6dceff;
+    --influx-glow: rgba(34,173,246,0.1);
+
+    --pinecone: #b06cf4;
+    --pinecone-light: #d0a0ff;
+    --pinecone-glow: rgba(176,108,244,0.1);
+
+    --success: #2ed573;
+    --warning: #ffa502;
+    --danger: #ff4757;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ─── TOP NAV ─── */
+  .topnav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(7,7,16,0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 24px;
+    height: 52px;
+    overflow-x: auto;
+  }
+
+  .topnav-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding-right: 20px;
+    border-right: 1px solid var(--border);
+    margin-right: 16px;
+  }
+
+  .nav-tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 14px;
+    height: 52px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: all 0.15s;
+    letter-spacing: 0.3px;
+  }
+
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--text); }
+
+  .nav-tab .tab-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ─── LAYOUT ─── */
+  .page { display: none; padding: 40px 48px 80px; max-width: 1100px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* ─── PAGE HEADER ─── */
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .db-badge {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+
+  .page-header-text h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+
+  .page-header-text .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .page-header-text .tagline {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.6;
+    max-width: 700px;
+    opacity: 0.8;
+  }
+
+  /* ─── SECTION HEADERS ─── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 36px 0 16px;
+  }
+
+  .section-header .sh-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    min-width: 28px;
+  }
+
+  .section-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+
+  .section-header .sh-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── INTERNALS CARD ─── */
+  .internals-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .ic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .ic-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ic-icon {
+    font-size: 18px;
+    width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .ic-title {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .ic-subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+
+  .ic-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .ic-chevron {
+    color: var(--muted);
+    font-size: 12px;
+    transition: transform 0.2s;
+    margin-left: 8px;
+  }
+
+  .ic-header.open .ic-chevron { transform: rotate(180deg); }
+
+  .ic-body {
+    display: none;
+    padding: 20px 24px;
+  }
+
+  .ic-body.open { display: block; }
+
+  /* ─── MECHANISM BOX ─── */
+  .mechanism {
+    margin-bottom: 20px;
+  }
+
+  .mechanism-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .mechanism-body {
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--text);
+  }
+
+  .mechanism-body strong { font-weight: 700; }
+  .mechanism-body code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--surface3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #c0c0f0;
+  }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 14px 0;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .flow-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    padding: 8px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-align: center;
+    line-height: 1.4;
+    flex-shrink: 0;
+  }
+
+  .flow-box .fb-label {
+    color: var(--muted);
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .flow-box .fb-name {
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  .flow-arrow {
+    color: var(--muted);
+    font-size: 16px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* ─── PROPERTIES GRID ─── */
+  .props-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .prop-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .prop-item .pi-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .prop-item .pi-value {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .prop-item .pi-why {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ─── COMPARISON TABLE ─── */
+  .ctable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+
+  .ctable th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .ctable td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.5;
+    vertical-align: top;
+  }
+
+  .ctable tr:last-child td { border-bottom: none; }
+  .ctable tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .ctable td:first-child {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  /* ─── INSIGHT BOX ─── */
+  .insight {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-top: 16px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .insight.key {
+    background: rgba(46,213,115,0.06);
+    border: 1px solid rgba(46,213,115,0.2);
+    color: #b0ffdc;
+  }
+
+  .insight.warn {
+    background: rgba(255,165,2,0.06);
+    border: 1px solid rgba(255,165,2,0.2);
+    color: #ffe0a0;
+  }
+
+  .insight.probe {
+    background: rgba(150,120,255,0.06);
+    border: 1px solid rgba(150,120,255,0.2);
+    color: #d0c0ff;
+  }
+
+  .insight-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    opacity: 0.7;
+  }
+
+  /* ─── CODE ─── */
+  .code-block {
+    background: #050510;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    line-height: 1.75;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+
+  .code-block .c { color: #505080; font-style: italic; }
+  .code-block .k { color: #82aaff; }
+  .code-block .s { color: #c3e88d; }
+  .code-block .n { color: #f78c6c; }
+  .code-block .t { color: #89ddff; }
+
+  /* ─── INTERVIEW SIGNAL ─── */
+  .signal-box {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 20px;
+  }
+
+  .signal-box h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .signal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .signal-item {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+    border-radius: 6px;
+  }
+
+  .signal-item.good {
+    background: rgba(46,213,115,0.06);
+    color: #90ffcc;
+  }
+
+  .signal-item.bad {
+    background: rgba(255,71,87,0.06);
+    color: #ffb0b8;
+  }
+
+  .signal-item::before {
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: -1px;
+  }
+
+  .signal-item.good::before { content: '✓'; color: var(--success); }
+  .signal-item.bad::before { content: '✗'; color: var(--danger); }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ─── HIGHLIGHT colors per DB ─── */
+  .hl-pg { color: var(--pg-light); }
+  .hl-cassandra { color: var(--cassandra-light); }
+  .hl-redis { color: var(--redis-light); }
+  .hl-mongo { color: var(--mongo-light); }
+  .hl-neo4j { color: var(--neo4j-light); }
+  .hl-elastic { color: var(--elastic-light); }
+  .hl-influx { color: var(--influx-light); }
+  .hl-pinecone { color: var(--pinecone-light); }
+
+  .tag-pg { background: var(--pg-glow); color: var(--pg-light); border: 1px solid rgba(51,103,145,0.3); }
+  .tag-cassandra { background: var(--cassandra-glow); color: var(--cassandra-light); border: 1px solid rgba(18,135,177,0.3); }
+  .tag-redis { background: var(--redis-glow); color: var(--redis-light); border: 1px solid rgba(220,56,45,0.3); }
+  .tag-mongo { background: var(--mongo-glow); color: var(--mongo-light); border: 1px solid rgba(0,237,100,0.25); }
+  .tag-neo4j { background: var(--neo4j-glow); color: var(--neo4j-light); border: 1px solid rgba(245,166,35,0.3); }
+  .tag-elastic { background: var(--elastic-glow); color: var(--elastic-light); border: 1px solid rgba(240,78,152,0.3); }
+  .tag-influx { background: var(--influx-glow); color: var(--influx-light); border: 1px solid rgba(34,173,246,0.3); }
+  .tag-pinecone { background: var(--pinecone-glow); color: var(--pinecone-light); border: 1px solid rgba(176,108,244,0.3); }
+
+  .dot-pg { background: var(--pg-light); }
+  .dot-cassandra { background: var(--cassandra-light); }
+  .dot-redis { background: var(--redis-light); }
+  .dot-mongo { background: var(--mongo-light); }
+  .dot-neo4j { background: var(--neo4j-light); }
+  .dot-elastic { background: var(--elastic-light); }
+  .dot-influx { background: var(--influx-light); }
+  .dot-pinecone { background: var(--pinecone-light); }
+
+  /* Collapse toggle animation */
+  .internals-card .ic-body {
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ─── LSM VISUAL ─── */
+  .lsm-visual {
+    display: grid;
+    gap: 6px;
+    margin: 14px 0;
+  }
+
+  .lsm-level {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lsm-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    width: 80px;
+    flex-shrink: 0;
+    letter-spacing: 1px;
+  }
+
+  .lsm-bar {
+    border-radius: 4px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .lsm-note {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ─── BTREE VISUAL ─── */
+  .btree-visual {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    line-height: 2;
+  }
+
+  .btree-node {
+    display: inline-block;
+    border: 1px solid;
+    border-radius: 4px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 12px;
+  }
+
+  .col-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .col-box h5 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .col-box ul {
+    list-style: none;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .col-box ul li {
+    padding: 3px 0;
+    display: flex;
+    gap: 6px;
+  }
+
+  .col-box ul li::before {
+    content: '→';
+    font-family: monospace;
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <div class="topnav-title">DB Internals</div>
+
+  <div class="nav-tab active" style="border-bottom-color: var(--pg-light);" onclick="showPage('pg', this)">
+    <div class="tab-dot dot-pg"></div> PostgreSQL
+  </div>
+  <div class="nav-tab" style="" onclick="showPage('cassandra', this)">
+    <div class="tab-dot dot-cassandra"></div> Cassandra
+  </div>
+  <div class="nav-tab" onclick="showPage('redis', this)">
+    <div class="tab-dot dot-redis"></div> Redis
+  </div>
+  <div class="nav-tab" onclick="showPage('mongo', this)">
+    <div class="tab-dot dot-mongo"></div> MongoDB
+  </div>
+  <div class="nav-tab" onclick="showPage('neo4j', this)">
+    <div class="tab-dot dot-neo4j"></div> Neo4j
+  </div>
+  <div class="nav-tab" onclick="showPage('elastic', this)">
+    <div class="tab-dot dot-elastic"></div> Elasticsearch
+  </div>
+  <div class="nav-tab" onclick="showPage('influx', this)">
+    <div class="tab-dot dot-influx"></div> InfluxDB / TS
+  </div>
+  <div class="nav-tab" onclick="showPage('vector', this)">
+    <div class="tab-dot dot-pinecone"></div> Vector DBs
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     POSTGRESQL
+══════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-pg">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--pg-glow); border: 1px solid rgba(51,103,145,0.3)">🐘</div>
+    <div class="page-header-text">
+      <div class="subtitle">The Baseline · Relational</div>
+      <h1 class="hl-pg">PostgreSQL Internals</h1>
+      <p class="tagline">Every NoSQL decision is a deliberate trade-off against what Postgres gives you. You must understand Postgres's architecture first — or you cannot reason about why the trade-off is worth making.</p>
+    </div>
+  </div>
+
+  <!-- B-TREE -->
+  <div class="section-header"><span class="sh-num">01</span><h2>The B-Tree: Why It Governs Everything</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🌳</div>
+        <div><div class="ic-title">B-Tree Index Structure</div><div class="ic-subtitle">The index type behind every PRIMARY KEY, UNIQUE, and default CREATE INDEX</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pg">Core</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">What it is</div>
+        <div class="mechanism-body">
+          A B-Tree is a self-balancing tree where every node holds between <code>d</code> and <code>2d</code> keys (typically 100–400 keys per node in Postgres, sized to fit a single 8KB page). Leaf nodes hold the actual index entries: <code>(key_value → heap_tid)</code> where <code>heap_tid</code> is a physical pointer to the row's location in the heap file (page number + slot offset). Internal nodes hold separator keys + child page pointers.
+        </div>
+      </div>
+
+      <div class="btree-visual">
+        <div style="text-align:center; margin-bottom:12px; color:var(--muted); font-size:10px; letter-spacing:2px">INTERNAL NODE (8KB page, ~300 keys)</div>
+        <div style="text-align:center; margin-bottom:8px">
+          <span class="btree-node" style="border-color:var(--pg-light); color:var(--pg-light)">10 | 30 | 60 | 90</span>
+        </div>
+        <div style="text-align:center; color:var(--muted); margin-bottom:8px">↙     ↓      ↓      ↓      ↘</div>
+        <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom:8px">
+          <span class="btree-node" style="border-color:var(--border2); font-size:10px">1..9 → TID</span>
+          <span class="btree-node" style="border-color:var(--border2); font-size:10px">10..29 → TID</span>
+          <span class="btree-node" style="border-color:var(--border2); font-size:10px">30..59 → TID</span>
+          <span class="btree-node" style="border-color:var(--border2); font-size:10px">60..89 → TID</span>
+          <span class="btree-node" style="border-color:var(--border2); font-size:10px">90+ → TID</span>
+        </div>
+        <div style="text-align:center; color:var(--muted); font-size:10px; margin-top:8px">↕ linked list across leaves for range scans</div>
+      </div>
+
+      <div class="mechanism">
+        <div class="mechanism-title">Why this gives you O(log N) reads and O(log N) writes</div>
+        <div class="mechanism-body">
+          Tree height = log<sub>d</sub>(N). With d≈300 and 100M rows: height = log₃₀₀(100M) ≈ <strong>4 levels</strong>. Every lookup = 4 page reads (each may be a disk seek). The leaf-to-leaf linked list enables efficient range scans — after the first binary search descent, subsequent rows are sequential page reads.<br><br>
+          <strong>The write cost:</strong> Every INSERT/UPDATE/DELETE must update the index page. If the page is full, it splits into two pages — the parent must be updated too. This cascades upward (rarely to root). All this happens synchronously before the transaction commits. <em>This is the fundamental reason writes in Postgres are slower than in an LSM-tree engine.</em>
+        </div>
+      </div>
+
+      <div class="insight key">
+        <div class="insight-label">🔑 The Core Constraint</div>
+        B-Tree writes are <strong>in-place updates</strong> on existing pages. To maintain sort order, an insert into a full page requires splitting. This means random I/O even for sequential inserts. An LSM-tree (Cassandra, RocksDB) converts all writes into sequential appends — that's the fundamental architectural difference, not "NoSQL is faster."
+      </div>
+    </div>
+  </div>
+
+  <!-- HEAP + MVCC -->
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📄</div>
+        <div><div class="ic-title">Heap File + MVCC</div><div class="ic-subtitle">How rows are actually stored and how transactions work</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pg">Storage</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Heap file layout</div>
+        <div class="mechanism-body">
+          The actual table data lives in a <strong>heap file</strong> — a flat array of 8KB pages. Each page has a header, then row slots stored from the end backward, and free space in the middle. Each row (called a <strong>tuple</strong>) has a 23-byte header containing: <code>xmin</code> (transaction ID that created it), <code>xmax</code> (transaction ID that deleted it), <code>ctid</code> (physical location of this tuple), null bitmap, and alignment bytes. Then the actual data.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">MVCC: why UPDATEs write new rows</div>
+        <div class="mechanism-body">
+          Postgres implements isolation via <strong>Multi-Version Concurrency Control</strong>. When you UPDATE a row, Postgres does NOT modify the existing row in-place. It writes a new version of the row (with the new values and a new <code>xmin</code>) and marks the old version with <code>xmax = current_txn_id</code>. Both versions exist on disk simultaneously.<br><br>
+          A concurrent reader with an earlier transaction snapshot still sees the old version. When the transaction commits, new readers see the new version. VACUUM periodically removes dead tuples (rows where <code>xmax</code> is a committed transaction and no active snapshot can see them anymore).<br><br>
+          <strong>The implication:</strong> Every UPDATE is actually a write of a full new row + an index entry update for every index on the table. A heavily-updated wide table with many indexes is expensive. This is called <strong>write amplification</strong> — one logical UPDATE becomes N physical writes (N = number of indexes).
+        </div>
+      </div>
+      <div class="insight warn">
+        <div class="insight-label">⚠ Interview Insight</div>
+        HOT (Heap-Only Tuple) optimization: if the updated column is not indexed and there's room on the same page, Postgres chains the new tuple to the old one without updating any index. This is why "never index columns you update frequently" is real advice — it enables HOT and dramatically reduces write amplification.
+      </div>
+    </div>
+  </div>
+
+  <!-- WAL -->
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📝</div>
+        <div><div class="ic-title">WAL — Write-Ahead Log</div><div class="ic-subtitle">The durability mechanism that everything else is built on top of</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pg">Durability</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">What the WAL is</div>
+        <div class="mechanism-body">
+          Before any heap page or index page is modified, Postgres writes a record of the change to the <strong>Write-Ahead Log</strong> — a sequential append-only file. The rule: <em>log record must be flushed to durable storage before the data page is considered written.</em> On commit, Postgres calls <code>fsync()</code> on the WAL, not on the heap/index pages. The heap pages are written lazily by the background writer.<br><br>
+          On crash recovery: Postgres replays WAL from the last checkpoint. Any heap/index page changes that weren't flushed are reconstructed from WAL records.
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-box"><span class="fb-label">client</span><span class="fb-name">INSERT</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box"><span class="fb-label">in memory</span><span class="fb-name">shared_buffers</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="border-color: var(--pg-light)"><span class="fb-label">sequential write</span><span class="fb-name">WAL file</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box"><span class="fb-label">fsync on commit</span><span class="fb-name">durable ✓</span></div>
+        <div class="flow-arrow">⟿</div>
+        <div class="flow-box"><span class="fb-label">async, later</span><span class="fb-name">heap + index pages</span></div>
+      </div>
+
+      <div class="mechanism">
+        <div class="mechanism-title">Why WAL is the write bottleneck at scale</div>
+        <div class="mechanism-body">
+          All writes from all connections share a <strong>single WAL stream</strong>. There is one WAL writer process. Every committed transaction must wait for its WAL records to be fsynced. At extreme write rates (~100K+ rows/sec from hundreds of connections), WAL becomes the serialization point. <code>wal_writer_delay</code>, <code>synchronous_commit = off</code>, and <code>commit_delay</code> are tuning knobs, but you cannot fundamentally parallelize the WAL — it's an intentionally sequential log. This is why Cassandra's commit log per-node + parallel coordinator model scales writes differently.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUERY PLANNER -->
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🧠</div>
+        <div><div class="ic-title">Query Planner + Statistics</div><div class="ic-subtitle">The cost-based optimizer that chooses between seq scan, index scan, hash join, merge join</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pg">Optimizer</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">How the planner decides</div>
+        <div class="mechanism-body">
+          Postgres maintains statistics per column in <code>pg_statistic</code>: <strong>null fraction, distinct count, most common values + their frequencies, and a histogram of value distribution</strong>. ANALYZE populates these (default: ~300 histogram buckets). The planner uses these statistics to estimate how many rows a predicate will return — and picks the access method with the lowest estimated total cost (random I/O cost × pages + CPU cost × rows).
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">When it goes wrong — and why this matters for NoSQL</div>
+        <div class="mechanism-body">
+          The planner <strong>cannot estimate cardinality for JSONB nested paths</strong> — <code>data-&gt;'specs'-&gt;'weight'</code> has no histogram. It assumes a default 0.5% selectivity, which is almost always wrong. Bad estimate → wrong plan → full seq scan on a 50M-row table when an index would help.<br><br>
+          For multi-column predicates with correlated columns (e.g., city + zip code), the planner assumes independence and underestimates the correlation — leading to over-estimated row counts and wrong join strategies. <strong>This is why ad-hoc queries on MongoDB or DynamoDB are dangerous — there is no planner equivalent to warn you.</strong>
+        </div>
+      </div>
+      <div class="insight probe">
+        <div class="insight-label">💬 Interview Signal</div>
+        Candidates who say "just add an index" without understanding selectivity, the planner's statistics, or when a seq scan beats an index scan (for &gt;~5% of table) haven't thought about the planner. Seq scan has better sequential I/O characteristics than index scan for low-selectivity queries — the planner knows this, most candidates don't.
+      </div>
+    </div>
+  </div>
+
+  <!-- CONNECTION MODEL -->
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🔌</div>
+        <div><div class="ic-title">Process-per-Connection Model</div><div class="ic-subtitle">Why Postgres needs PgBouncer and why this limits raw concurrency</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pg">Concurrency</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">The model</div>
+        <div class="mechanism-body">
+          Each client connection forks a dedicated backend <strong>OS process</strong> (~5-10MB RSS per process for shared memory segments + private memory). At 500 connections: ~2.5GB RAM just for process overhead, before any query data. Each process has its own local memory for query buffers, sort workspace (<code>work_mem</code>), and a plan cache. Context switching between 500 processes under load is measurable overhead.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Why this is the concurrency ceiling</div>
+        <div class="mechanism-body">
+          Postgres's practical connection limit is 100–300 before you need a connection pooler (PgBouncer). PgBouncer maintains a small pool of actual Postgres connections and multiplexes thousands of application connections onto them. In <strong>transaction pooling mode</strong>, the same Postgres connection handles different client transactions back-to-back — but this breaks <code>SET</code> variables, prepared statements, and advisory locks if not handled carefully.<br><br>
+          Redis, by contrast, uses a <strong>single-threaded event loop</strong> with epoll/kqueue — tens of thousands of connections share one thread, and context switching is pure user-space. MongoDB and Cassandra use thread pools with async I/O — they don't fork an OS process per connection.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Postgres-level thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains B-tree height and why 4 page reads = a lookup on 100M rows</div>
+      <div class="signal-item bad">"Postgres doesn't scale" without specifying which axis (write throughput? connection count? index maintenance?)</div>
+      <div class="signal-item good">Knows UPDATE = new tuple + dead tuple, and mentions VACUUM, write amplification, HOT</div>
+      <div class="signal-item bad">"Add an index" without knowing when the planner prefers seq scan</div>
+      <div class="signal-item good">Explains WAL as the single serialization point for writes and why it limits horizontal write scale</div>
+      <div class="signal-item bad">"Use read replicas for scale" without explaining that read replicas only help reads, not write throughput</div>
+      <div class="signal-item good">Knows PgBouncer is needed and why: process-per-connection model vs thread/event-loop models</div>
+      <div class="signal-item bad">Jumps to NoSQL without being able to articulate what specific Postgres constraint they're working around</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     CASSANDRA
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-cassandra">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--cassandra-glow); border: 1px solid rgba(18,135,177,0.3)">🗂</div>
+    <div class="page-header-text">
+      <div class="subtitle">Wide-Column · LSM-Tree · Masterless</div>
+      <h1 class="hl-cassandra">Cassandra Internals</h1>
+      <p class="tagline">Cassandra makes one fundamental trade: it sacrifices the query flexibility of a general-purpose database to achieve linear write scalability and no single point of failure. Every internals decision flows from that commitment.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>LSM-Tree: Why Writes Are Sequential</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📥</div>
+        <div><div class="ic-title">Log-Structured Merge Tree (LSM-Tree)</div><div class="ic-subtitle">The storage engine that makes Cassandra's write throughput possible</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-cassandra">Core Engine</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">The write path — step by step</div>
+        <div class="mechanism-body">
+          <strong>1. Commit Log (sequential append):</strong> Every write is first appended to a commit log — a sequential file on disk. This is the durability guarantee. The write is acknowledged after this flush. Cost: one sequential disk write, regardless of which key is being written. No page lookup, no B-tree traversal.<br><br>
+          <strong>2. Memtable (in-memory sorted structure):</strong> The write is also applied to an in-memory data structure called the <strong>memtable</strong> — typically a skip list or a concurrent sorted map. Reads check the memtable first (most recent writes are here). The memtable absorbs writes until it reaches a size threshold (~64–256MB).<br><br>
+          <strong>3. SSTable flush (sequential write):</strong> When the memtable is full, it is flushed to disk as an immutable, sorted file called an <strong>SSTable (Sorted String Table)</strong>. The flush is a sequential write — the entire memtable is written in sorted key order from beginning to end. No random I/O.
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-box"><span class="fb-label">write</span><span class="fb-name">client</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="border-color:var(--cassandra-light)"><span class="fb-label">sequential append</span><span class="fb-name">Commit Log</span></div>
+        <div class="flow-arrow">+</div>
+        <div class="flow-box" style="border-color:var(--cassandra-light)"><span class="fb-label">in-memory skip list</span><span class="fb-name">Memtable</span></div>
+        <div class="flow-arrow">→ flush →</div>
+        <div class="flow-box"><span class="fb-label">immutable, sorted</span><span class="fb-name">SSTable₁</span></div>
+        <div class="flow-arrow">+</div>
+        <div class="flow-box"><span class="fb-label">background</span><span class="fb-name">SSTable₂ merge</span></div>
+      </div>
+
+      <div class="mechanism">
+        <div class="mechanism-title">SSTables and Compaction</div>
+        <div class="mechanism-body">
+          Each SSTable is immutable — once written, never modified. Over time many SSTables accumulate for the same key ranges. A background process called <strong>compaction</strong> merges SSTables: it reads multiple SSTables sorted by key, merges them (keeping only the latest version of each row), and writes a new, larger SSTable. The old ones are then deleted.<br><br>
+          <strong>Why this matters for reads:</strong> A read must check the memtable + potentially multiple SSTables. Cassandra uses a <strong>Bloom filter</strong> per SSTable (a probabilistic set membership test) to quickly determine if a key <em>might</em> be in that SSTable — avoiding unnecessary disk reads. False positives are possible; false negatives are not. This is how reads stay O(1) despite multiple SSTables.
+        </div>
+      </div>
+
+      <div class="lsm-visual">
+        <div class="lsm-level">
+          <div class="lsm-label">Memtable</div>
+          <div class="lsm-bar" style="background: rgba(18,135,177,0.25); border: 1px solid var(--cassandra-light); width:100px; color:var(--cassandra-light)">in RAM</div>
+          <div class="lsm-note">← all writes land here first. Sub-microsecond.</div>
+        </div>
+        <div class="lsm-level">
+          <div class="lsm-label">L0 SSTables</div>
+          <div class="lsm-bar" style="background: rgba(18,135,177,0.15); border: 1px solid rgba(18,135,177,0.4); width:200px; color:#a0d8f0">4–8 files</div>
+          <div class="lsm-note">← freshly flushed, overlapping key ranges</div>
+        </div>
+        <div class="lsm-level">
+          <div class="lsm-label">L1 SSTables</div>
+          <div class="lsm-bar" style="background: rgba(18,135,177,0.1); border: 1px solid rgba(18,135,177,0.3); width:360px; color:#80c8e8">~10 files, 10× larger</div>
+          <div class="lsm-note">← compacted from L0, non-overlapping</div>
+        </div>
+        <div class="lsm-level">
+          <div class="lsm-label">L2+ SSTables</div>
+          <div class="lsm-bar" style="background: rgba(18,135,177,0.06); border: 1px solid rgba(18,135,177,0.2); width:500px; color:#60b8e0">100× larger still</div>
+          <div class="lsm-note">← bulk of data, infrequently rewritten</div>
+        </div>
+      </div>
+
+      <div class="insight key">
+        <div class="insight-label">🔑 The Key Insight</div>
+        In a B-tree engine, a write to key 42 must find page containing 42 and modify it — random I/O. In an LSM engine, a write to key 42 is appended to the end of the commit log and inserted into the memtable skip list — always sequential. The sort order is established lazily at flush time, not at write time. <strong>This converts random write I/O into sequential write I/O, which is 10–100× faster on spinning disk and 3–10× faster even on SSDs.</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Masterless Ring: How Writes Scale Linearly</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">💍</div>
+        <div><div class="ic-title">Consistent Hashing + Masterless Ring</div><div class="ic-subtitle">Why adding a node increases write throughput proportionally</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-cassandra">Architecture</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">The consistent hashing ring</div>
+        <div class="mechanism-body">
+          Every Cassandra node owns a range of a hash space (0 to 2⁶⁴). A write for partition key <code>user_123</code> is hashed via Murmur3 to a token (e.g., 8,342,719,234). The node responsible for that token range receives the write as the <strong>coordinator</strong>. The coordinator then writes to N replicas (the next N nodes clockwise on the ring).<br><br>
+          <strong>No master, no leader election.</strong> Any node can be the coordinator for any write. There is no single WAL, no single write path. 10 nodes = 10 parallel write paths. Adding a 11th node = approximately 10% more write capacity, proportionally. This is what "linear scalability" actually means mechanistically.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Replication + Consistency levels</div>
+        <div class="mechanism-body">
+          With replication factor RF=3, every row is written to 3 nodes. The coordinator sends the write to all 3 replicas in parallel. The consistency level determines how many acknowledgments the coordinator waits for before returning success:<br><br>
+          <code>ONE</code> — return after 1 replica acks. Fastest, risk: you read stale data if you hit one of the 2 non-acknowledged replicas.<br>
+          <code>QUORUM</code> — return after ⌈RF/2⌉+1 = 2 acks. Guarantees that a QUORUM read will overlap with at least 1 write replica — strong consistency.<br>
+          <code>ALL</code> — all 3 replicas must ack. Slowest. Availability drops if any replica is down.
+        </div>
+      </div>
+      <div class="insight warn">
+        <div class="insight-label">⚠ The Trade-off Candidates Miss</div>
+        Cassandra has no transactions across partition keys. There is no way to atomically update two rows in different partitions. Within a single partition, Cassandra supports lightweight transactions (LWT) via Paxos — but LWT has ~4× latency overhead and is rarely used at scale. If you need cross-entity atomicity, Cassandra is the wrong tool regardless of write volume.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">03</span><h2>Data Modeling: Designing Tables for Queries</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📐</div>
+        <div><div class="ic-title">Partition Key + Clustering Key</div><div class="ic-subtitle">The data model you MUST define before writing a single line of code</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-cassandra">Data Model</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Partition key: the routing decision</div>
+        <div class="mechanism-body">
+          The partition key determines which node(s) hold the data. All rows with the same partition key are stored <strong>contiguously on the same SSTable segment on the same node</strong>. A read for a partition key = one node, one SSTable range scan. This is O(1) routing — no scatter-gather.<br><br>
+          Cardinality matters: too few unique partition keys = hot partitions (one node holds all data). Too many unique keys (e.g., using a UUID as the partition key with no clustering) = no ability to do range queries.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Clustering key: the sort order within a partition</div>
+        <div class="mechanism-body">
+          Within a partition, rows are sorted by the clustering key and stored in that order in the SSTable. A range query on the clustering key (e.g., <code>WHERE user_id = ? AND event_time BETWEEN ? AND ?</code>) is a sequential read of a contiguous byte range in one SSTable file on one node. This is why time-range queries on Cassandra are fast — they're sequential I/O, not random I/O.<br><br>
+          <strong>The constraint:</strong> You can only efficiently query using the partition key (for routing) + clustering key prefix (for range). Any other filter requires <code>ALLOW FILTERING</code> which is a full partition scan — equivalent to a table scan in SQL terms.
+        </div>
+      </div>
+      <div class="code-block">
+<span class="c">-- This is NOT schema design. This is ACCESS PATTERN design.</span>
+<span class="c">-- The query you need: "give me user X's events in last 24h, newest first"</span>
+
+<span class="k">CREATE TABLE</span> user_events (
+  user_id    <span class="t">UUID</span>,        <span class="c">-- partition key: Murmur3(user_id) → node</span>
+  event_time <span class="t">TIMESTAMP</span>,  <span class="c">-- clustering key: sorted DESC within partition</span>
+  event_type <span class="t">TEXT</span>,
+  payload    <span class="t">TEXT</span>,
+  <span class="k">PRIMARY KEY</span> (user_id, event_time)
+) <span class="k">WITH CLUSTERING ORDER BY</span> (event_time <span class="k">DESC</span>)
+  <span class="k">AND</span> default_time_to_live = <span class="n">2592000</span>;
+
+<span class="c">-- Efficient: single node, sequential SSTable scan</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> user_events
+<span class="k">WHERE</span> user_id = <span class="s">?</span> <span class="k">AND</span> event_time > <span class="s">now() - 24h</span>;
+
+<span class="c">-- DEATH: no partition key → full cluster scan → ALLOW FILTERING</span>
+<span class="k">SELECT</span> * <span class="k">FROM</span> user_events <span class="k">WHERE</span> event_type = <span class="s">'click'</span>; <span class="c">-- ← never do this</span>
+      </div>
+      <div class="insight probe">
+        <div class="insight-label">💬 Interview Signal</div>
+        Ask "what's your partition key?" immediately when a candidate proposes Cassandra. If they say "the primary ID," follow with: "what's the max partition size? Cassandra recommends &lt;100MB per partition — if one user generates 10M events/day, how do you bucket?" The answer is a composite partition key: <code>(user_id, date)</code> — partitioning by day to cap partition size. Candidates who haven't thought about partition sizing haven't designed for Cassandra at scale.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Cassandra thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains LSM: write → commit log (sequential) → memtable → SSTable flush, never in-place update</div>
+      <div class="signal-item bad">"Cassandra has high write throughput" without explaining why</div>
+      <div class="signal-item good">Knows Bloom filters are per-SSTable to avoid disk reads during reads</div>
+      <div class="signal-item bad">Doesn't know what compaction does or why read latency can spike during heavy compaction</div>
+      <div class="signal-item good">Designs partition key around query, not around entity identity</div>
+      <div class="signal-item bad">Uses UUID as partition key and can't answer "how do I get all events for a user?"</div>
+      <div class="signal-item good">Knows QUORUM read + QUORUM write = strong consistency, and can explain the math (RF=3, QUORUM=2, overlap guaranteed)</div>
+      <div class="signal-item bad">"Cassandra is eventually consistent" without knowing you can tune it per-operation</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     REDIS
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-redis">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--redis-glow); border: 1px solid rgba(220,56,45,0.3)">⚡</div>
+    <div class="page-header-text">
+      <div class="subtitle">Key-Value · In-Memory · Single-Threaded Event Loop</div>
+      <h1 class="hl-redis">Redis Internals</h1>
+      <p class="tagline">Redis's performance isn't magic — it's the consequence of three deliberate constraints: everything in RAM, a single-threaded event loop with no lock contention, and purpose-built data structures that execute in O(1) or O(log N).</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>Single-Threaded Event Loop: Why No Locks = Speed</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🔄</div>
+        <div><div class="ic-title">The Event Loop Model</div><div class="ic-subtitle">epoll/kqueue + single thread = zero lock contention</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-redis">Core</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">How it works</div>
+        <div class="mechanism-body">
+          Redis runs a <strong>single main thread</strong> executing an event loop using <code>epoll</code> (Linux) or <code>kqueue</code> (BSD/macOS). The event loop multiplexes thousands of client connections in one thread. When a client sends a command, the kernel notifies Redis via epoll that data is ready. Redis reads the command, executes it against the in-memory data structure, and writes the response — all in the same thread, atomically.<br><br>
+          Because there is exactly one thread touching any data structure at any time, there are <strong>zero mutex locks</strong> on the data path. A GET command is literally: hash table lookup → return value. No lock acquire, no lock release. On a modern CPU, this path executes in ~100–200 nanoseconds.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Why single-threaded doesn't mean slow</div>
+        <div class="mechanism-body">
+          The bottleneck for a Redis operation is not CPU — it's network round-trip time (~100μs on LAN). The command itself executes in nanoseconds. A single thread saturating a 10Gbps NIC can handle ~1M simple commands/sec. Multi-threading adds lock overhead and cache invalidation traffic that for in-memory operations costs more than it saves. Redis 6+ added I/O threading for network read/write to saturate multi-core systems — but the command execution itself remains single-threaded.
+        </div>
+      </div>
+      <div class="insight warn">
+        <div class="insight-label">⚠ The Implication Candidates Miss</div>
+        Because execution is single-threaded, a slow Redis command (e.g., <code>SMEMBERS</code> on a set of 10M elements, <code>KEYS *</code>, or a Lua script with a loop) blocks ALL other clients for its duration. O(N) commands on large data structures are production incidents waiting to happen. This is why Redis documentation marks the time complexity of every command.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Data Structures: The Actual Reason to Use Redis</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🏗</div>
+        <div><div class="ic-title">Internal Data Structure Implementations</div><div class="ic-subtitle">What actually lives in memory and why each structure exists</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-redis">Structures</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <table class="ctable">
+        <tr>
+          <th>Type</th><th>Internal representation</th><th>Key operation + complexity</th><th>Use case that can't be done in SQL efficiently</th>
+        </tr>
+        <tr>
+          <td>String</td>
+          <td>SDS (Simple Dynamic String) — length-prefixed, not null-terminated. O(1) length, binary-safe.</td>
+          <td>GET/SET: O(1). INCR: atomic increment, O(1) — single instruction on in-memory int.</td>
+          <td>Rate limiting counter with atomic INCR + EXPIRE. No SQL equivalent without row lock.</td>
+        </tr>
+        <tr>
+          <td>Hash</td>
+          <td>ziplist (compact array) for small maps (&lt;128 fields), then converts to hashtable when threshold exceeded.</td>
+          <td>HGET: O(1). HGETALL: O(N fields). The ziplist encoding stores key-value pairs in a contiguous memory block — cache-friendly for small maps.</td>
+          <td>User session object: HMSET user:123 name "Alice" cart_count 3. One RTT to read/update individual fields.</td>
+        </tr>
+        <tr>
+          <td>Sorted Set (ZSET)</td>
+          <td>Dual structure: a <strong>skip list</strong> (for O(log N) rank operations) + a <strong>hash table</strong> (for O(1) score lookup by member).</td>
+          <td>ZADD: O(log N). ZRANGE by rank: O(log N + k). ZRANGEBYSCORE: O(log N + k). Both structures updated atomically on every write.</td>
+          <td>Leaderboard: ZADD scores 1500 "user_123". ZREVRANGE scores 0 9 = top 10. In SQL: ORDER BY score DESC with index, but no O(log N) rank query without scanning.</td>
+        </tr>
+        <tr>
+          <td>HyperLogLog</td>
+          <td>Probabilistic cardinality estimator using harmonic mean of hash registers. Fixed 12KB regardless of input size.</td>
+          <td>PFADD: O(1). PFCOUNT: O(1). Error rate ±0.81%.</td>
+          <td>Unique visitor count per page. SQL COUNT(DISTINCT) requires O(N) scan or exact set storage. HyperLogLog uses 12KB for any cardinality.</td>
+        </tr>
+        <tr>
+          <td>Stream</td>
+          <td>Radix tree of macro-nodes, each a listpack (compact encoding) of entries. Entries have auto-generated IDs (millsecond-timestamp + sequence).</td>
+          <td>XADD: O(1). XRANGE: O(N). Consumer groups partition stream among readers with at-least-once delivery and ACK tracking.</td>
+          <td>Lightweight event log with fan-out and consumer groups. When Kafka is overkill (no replayability requirement, small teams).</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">03</span><h2>Persistence: RDB vs AOF</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">💾</div>
+        <div><div class="ic-title">Durability Trade-offs</div><div class="ic-subtitle">What Redis actually persists and what it risks losing</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-redis">Durability</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="two-col">
+        <div class="col-box">
+          <h5>RDB (Snapshot)</h5>
+          <ul>
+            <li>Fork a child process at intervals (e.g., every 5min if 10K writes)</li>
+            <li>Child writes a point-in-time binary snapshot to disk via copy-on-write</li>
+            <li>Fast restarts — load one file</li>
+            <li>Risk: crash between snapshots = data loss of last N minutes</li>
+            <li>Fork cost: for 10GB dataset, fork is fast but CoW memory pressure spikes</li>
+          </ul>
+        </div>
+        <div class="col-box">
+          <h5>AOF (Append-Only File)</h5>
+          <ul>
+            <li>Every write command is appended to an AOF log</li>
+            <li>fsync policy: always (safe, slow) / everysec (safe within 1s) / never (OS decides)</li>
+            <li>AOF rewrite: background process compacts log by rewriting current state</li>
+            <li>Risk: large AOF files, slower restarts (replay all commands)</li>
+            <li>Gold standard: AOF with <code>everysec</code> + RDB for fast restarts</li>
+          </ul>
+        </div>
+      </div>
+      <div class="insight key">
+        <div class="insight-label">🔑 Key Point</div>
+        Redis with <code>appendfsync always</code> has similar durability to Postgres with <code>synchronous_commit = on</code> — every write is fsynced before acknowledgment. The difference is not durability — it's that Redis can only do this for the single-node case. Redis Cluster shards data but doesn't give you cross-shard transactions.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Redis thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Knows single-threaded means O(N) commands (KEYS, SMEMBERS on huge sets) block all clients</div>
+      <div class="signal-item bad">"Redis is fast because it's in-memory" — all in-memory DBs are fast; the architectural reason is the event loop + no locks</div>
+      <div class="signal-item good">Picks the right data structure: ZSET for leaderboard, HyperLogLog for cardinality, Stream for fan-out events</div>
+      <div class="signal-item bad">Uses only STRING for everything — misses the entire value of Redis's native structures</div>
+      <div class="signal-item good">Explains AOF vs RDB trade-off and can say what data loss is acceptable in their use case</div>
+      <div class="signal-item bad">"Redis can lose data" without knowing the persistence modes or how to tune them</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     MONGODB
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-mongo">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--mongo-glow); border: 1px solid rgba(0,237,100,0.2)">📄</div>
+    <div class="page-header-text">
+      <div class="subtitle">Document Store · WiredTiger · BSON</div>
+      <h1 class="hl-mongo">MongoDB Internals</h1>
+      <p class="tagline">MongoDB's core insight is that the document is the unit of atomicity, retrieval, and schema definition. The WiredTiger storage engine gives it MVCC transactions; the BSON format and dynamic schema give it flexibility. Understanding both tells you exactly when it wins and when it doesn't.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>WiredTiger: The Storage Engine</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">⚙️</div>
+        <div><div class="ic-title">WiredTiger B-Tree + MVCC</div><div class="ic-subtitle">MongoDB's storage engine since v3.2 — and why it changed everything</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-mongo">Storage</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">WiredTiger architecture</div>
+        <div class="mechanism-body">
+          WiredTiger is a B-tree based storage engine with its own MVCC implementation. Each collection is stored in a WiredTiger file (essentially a B-tree of documents indexed by a monotonically increasing <code>RecordId</code>). Documents are stored as <strong>BSON</strong> (Binary JSON) — a binary encoding that includes type information and length prefixes for O(1) field traversal.<br><br>
+          MVCC is implemented via a <strong>transaction history store</strong>: WiredTiger maintains old versions of modified documents in a separate in-memory structure, not in the document file itself. This is cleaner than Postgres's approach of storing dead tuples inline in heap pages — WiredTiger's history store is garbage collected separately, so there's no equivalent of Postgres's VACUUM bloat problem.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Document-level locking (vs Postgres's row-level locking)</div>
+        <div class="mechanism-body">
+          WiredTiger uses <strong>document-level optimistic locking</strong> with MVCC. Concurrent writes to different documents in the same collection don't block each other. Two concurrent writes to the same document: one succeeds, the other gets a write conflict and retries. Postgres uses row-level locks (the lock is held in the row's xmax field); WiredTiger uses timestamp-based conflict detection.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">BSON and schema flexibility</div>
+        <div class="mechanism-body">
+          BSON documents are self-describing — every field has a type tag + length prefix. This means MongoDB never needs a schema to deserialize a document: it reads the type, reads N bytes, moves to the next field. This is why you can store documents with different shapes in the same collection and query any of them — there's no schema to violate at the storage layer.<br><br>
+          <strong>The cost:</strong> BSON is verbose. Every document carries field names as strings. A collection with 10M documents each having a field <code>"last_modified_timestamp"</code> stores that 22-byte string 10M times. Postgres stores the column name once in <code>pg_attribute</code>. For wide documents with many fields, this field-name overhead is significant.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Indexes: What Works and What Doesn't</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📑</div>
+        <div><div class="ic-title">B-Tree + GeoSpatial + Multikey Indexes</div><div class="ic-subtitle">MongoDB's index capabilities — and where GIN in Postgres actually beats it</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-mongo">Indexes</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Multikey index: indexing array fields</div>
+        <div class="mechanism-body">
+          When you index a field that contains an array (<code>tags: ["nosql","database","mongodb"]</code>), MongoDB creates a <strong>multikey index</strong> — one index entry per array element, all pointing to the same document. A query <code>{tags: "nosql"}</code> hits the B-tree, finds the entry for "nosql", and returns the document. This is semantically similar to Postgres's GIN index on an array column, but implemented differently: MongoDB's is a B-tree with duplicated entries; Postgres GIN maintains a posting list per value.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Why complex nested queries degrade</div>
+        <div class="mechanism-body">
+          MongoDB's query planner can use an index on <code>specs.resolution</code> if you've explicitly created one. But it has <strong>no statistics on value distribution</strong> for nested BSON paths (unlike Postgres's pg_statistic). The planner uses trial sampling (runs candidate plans for 101 documents and picks the fastest) — called <strong>plan cache</strong>. For stable data patterns this works; for high-cardinality nested fields with skewed distributions, the cached plan can be wrong.
+        </div>
+      </div>
+      <div class="insight key">
+        <div class="insight-label">🔑 Critical Distinction</div>
+        MongoDB's strength is that the entire document is the unit of retrieval — fetch by <code>_id</code>, get everything in one read from the B-tree leaf. Postgres fetching the same entity spread across 5 normalized tables requires 4 JOINs = 4+ index lookups + heap fetches. For "give me this whole entity" access patterns, MongoDB wins on I/O count. For "give me all entities where nested_field = X" access patterns, Postgres's statistics-backed planner often wins on plan quality.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">03</span><h2>Replication + Sharding</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🌐</div>
+        <div><div class="ic-title">Replica Sets + Oplog</div><div class="ic-subtitle">How MongoDB replicates — and why the oplog design matters</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-mongo">Replication</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Replica set + oplog</div>
+        <div class="mechanism-body">
+          A MongoDB replica set has one primary and N-1 secondaries. The primary writes all changes to its <strong>oplog</strong> (operations log) — a capped collection stored as a fixed-size ring buffer. Secondaries tail the oplog and apply operations in order. Leader election uses Raft consensus (since MongoDB 3.2).<br><br>
+          <strong>Oplog is idempotent:</strong> each entry is a full document replacement (<code>$set</code> operations are expanded to their final state), not a diff. This makes replication safe to replay but means oplog entries are larger than the original write for small field updates.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Sharding: the shard key is everything</div>
+        <div class="mechanism-body">
+          MongoDB sharding partitions data by a <strong>shard key</strong>. A mongos router hashes or range-partitions the shard key to determine which shard holds a document. A query that includes the shard key is routed to one shard (targeted). A query without the shard key is broadcast to all shards (scatter-gather) and merged by mongos.<br><br>
+          <strong>The cardinal sin:</strong> choosing a low-cardinality shard key (e.g., <code>status: "active"/"inactive"</code>). All "active" documents land on one shard — a hot shard that gets all writes. Same problem as Cassandra's hot partition. The shard key must be high-cardinality, write-distributed, and query-aligned.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good MongoDB thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Knows WiredTiger uses document-level MVCC, not the old global lock of MMAPv1</div>
+      <div class="signal-item bad">"MongoDB doesn't have transactions" — it has multi-document ACID transactions since v4.0</div>
+      <div class="signal-item good">Explains BSON field-name overhead and why it matters for wide documents at scale</div>
+      <div class="signal-item bad">Can't distinguish multikey index from a GIN index; just says "indexes work the same as SQL"</div>
+      <div class="signal-item good">Designs the document shape around the fetch unit: things fetched together live together</div>
+      <div class="signal-item bad">Puts everything in one collection with deeply nested paths and expects all queries to be efficient</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     NEO4J
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-neo4j">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--neo4j-glow); border: 1px solid rgba(245,166,35,0.3)">🕸</div>
+    <div class="page-header-text">
+      <div class="subtitle">Graph · Index-Free Adjacency · Property Graph</div>
+      <h1 class="hl-neo4j">Neo4j Internals</h1>
+      <p class="tagline">Neo4j's entire storage model exists to answer one question: how do you traverse relationships in O(1) per hop instead of O(log N) per JOIN? The answer is index-free adjacency — the most important data structure difference between a graph database and a relational one.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>Index-Free Adjacency: The Core Data Structure</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🔗</div>
+        <div><div class="ic-title">How Nodes and Relationships Are Stored</div><div class="ic-subtitle">The linked-list structure that makes multi-hop traversal O(1) per step</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-neo4j">Core</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Fixed-size node records</div>
+        <div class="mechanism-body">
+          Each node in Neo4j is stored as a <strong>fixed-size 15-byte record</strong> in a node store file. The record contains: in-use flag, first relationship ID, first property ID, label store ID. Because the record size is fixed, the node with ID <code>n</code> is at byte offset <code>n × 15</code> in the file — a direct array lookup with no index needed.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Relationship records: the doubly-linked list</div>
+        <div class="mechanism-body">
+          Each relationship is a <strong>34-byte record</strong> containing: start node ID, end node ID, relationship type, first property ID, and — crucially — four pointers: <em>prev/next relationship for start node</em> and <em>prev/next relationship for end node</em>.<br><br>
+          This means every node has a <strong>doubly-linked list of all its relationships</strong>, stored directly in the relationship store file. To find all neighbors of node N: read node record N (1 disk seek) → follow <code>first_relationship_id</code> → read that relationship record → follow <code>next_relationship_for_N</code> chain. Every step is a fixed-offset file read, not a B-tree lookup.
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-box" style="border-color:var(--neo4j-light)"><span class="fb-label">node record</span><span class="fb-name">Alice (id=1)</span></div>
+        <div class="flow-arrow">→ first_rel →</div>
+        <div class="flow-box"><span class="fb-label">rel record</span><span class="fb-name">KNOWS → Bob</span></div>
+        <div class="flow-arrow">→ next_rel →</div>
+        <div class="flow-box"><span class="fb-label">rel record</span><span class="fb-name">KNOWS → Carol</span></div>
+        <div class="flow-arrow">→ next_rel →</div>
+        <div class="flow-box"><span class="fb-label">rel record</span><span class="fb-name">WORKS_AT → AcmeCo</span></div>
+        <div class="flow-arrow">→ null</div>
+      </div>
+
+      <div class="mechanism">
+        <div class="mechanism-title">Why this beats SQL JOINs for deep traversal</div>
+        <div class="mechanism-body">
+          In SQL, finding neighbors of user 1 requires: <code>SELECT to_id FROM edges WHERE from_id = 1</code> → B-tree index lookup on <code>from_id</code> column → heap fetch for each matching row. Cost is O(log N) for the index + O(k) heap fetches where N is total edge count and k is degree.<br><br>
+          In Neo4j: node record is at byte <code>id × 15</code> (direct offset, no index). Relationship chain is followed by pointer arithmetic. <strong>Each hop is O(1) — not O(log N).</strong> At depth 4 in a social graph: SQL makes 4 index lookups with exponentially growing result sets that must be deduplicated. Neo4j makes 4 pointer follows with result capped by the actual graph structure.
+        </div>
+      </div>
+
+      <div class="insight key">
+        <div class="insight-label">🔑 The Key Insight</div>
+        The performance of graph traversal in Neo4j is <strong>proportional to the subgraph actually traversed</strong>, not to the total graph size. Finding friends-of-friends of user 1 in a 1B-node graph takes the same time as in a 1M-node graph, as long as user 1's neighborhood is the same size. SQL's JOIN cost grows with table size, not subgraph size.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Property Storage + Cypher Execution</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🧩</div>
+        <div><div class="ic-title">Property Store + Label Index</div><div class="ic-subtitle">How properties and labels are stored, and how Cypher queries enter the graph</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-neo4j">Storage</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Property storage</div>
+        <div class="mechanism-body">
+          Properties (key-value attributes on nodes/relationships) are stored in a separate <strong>property store</strong> as a linked list of property records, each 41 bytes. Small values (integers, booleans, short strings ≤36 bytes) are stored inline. Larger strings/arrays are stored in a <em>dynamic store</em> (separate file) with a pointer from the property record. The node record points to the first property in its chain.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Label indexes and query entry points</div>
+        <div class="mechanism-body">
+          A Cypher query like <code>MATCH (u:User {name: "Alice"})</code> needs an entry point into the graph. Without an index on <code>:User(name)</code>, Neo4j would scan all User nodes — equivalent to a full table scan. With a native B-tree or range index on <code>:User(name)</code>, the planner finds Alice's node ID in O(log N) and then traverses from there in O(1) per hop.<br><br>
+          <strong>This is the query planning analog:</strong> graph traversal scales with subgraph size, but the <em>starting point</em> for a traversal still requires an index on node properties if you're not starting from a known node ID.
+        </div>
+      </div>
+      <div class="insight probe">
+        <div class="insight-label">💬 Interview Signal</div>
+        Ask: "When does Neo4j require an index, and when is traversal index-free?" Good answer: you need an index to find the entry nodes (those matching label+property predicates). Once you have the entry node IDs, subsequent traversal hops are index-free — pure pointer following. Weak answer: "Neo4j is index-free so it doesn't need indexes" — wrong, it still needs indexes to resolve the initial MATCH predicate.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Neo4j thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains index-free adjacency: each node has a linked list of relationships, traversal is O(1) per hop via pointer</div>
+      <div class="signal-item bad">"Graphs are better for relationships" — every relational DB has relationships; the question is traversal depth</div>
+      <div class="signal-item good">Knows traversal cost scales with subgraph size, not total graph size</div>
+      <div class="signal-item bad">Can't articulate why 4-hop traversal in SQL causes result set explosion</div>
+      <div class="signal-item good">Knows you still need property indexes to find entry nodes — index-free only applies to traversal, not initial lookup</div>
+      <div class="signal-item bad">"Neo4j is schema-free" without knowing it has property graphs, labels, and relationship types that function as schema</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     ELASTICSEARCH
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-elastic">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--elastic-glow); border: 1px solid rgba(240,78,152,0.3)">🔍</div>
+    <div class="page-header-text">
+      <div class="subtitle">Search · Inverted Index · Lucene Segments</div>
+      <h1 class="hl-elastic">Elasticsearch Internals</h1>
+      <p class="tagline">Elasticsearch is Lucene distributed. Every performance characteristic — why full-text is fast, why updates are expensive, why aggregations work — traces back to the inverted index and Lucene's immutable segment architecture.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>The Inverted Index: Why Text Search Is O(1)</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📚</div>
+        <div><div class="ic-title">Inverted Index + Posting Lists</div><div class="ic-subtitle">The data structure that makes "contains laptop" a constant-time lookup</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-elastic">Core</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Structure</div>
+        <div class="mechanism-body">
+          An inverted index maps every <strong>term → sorted list of document IDs that contain it</strong> (called a <strong>posting list</strong>). During indexing, documents are analyzed: text is tokenized, lowercased, stemmed (e.g., "running" → "run"), and stop words removed. Each resulting term is inserted into the index with a pointer to the document.<br><br>
+          At query time: "laptop gaming" → lookup "laptop" posting list [doc1, doc3, doc7, ...] + lookup "gaming" posting list [doc3, doc7, doc12, ...] → merge (intersection or union depending on operator) → score results with BM25.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">BM25 scoring — what it actually computes</div>
+        <div class="mechanism-body">
+          BM25 (Best Match 25) scores each document for a query based on: <strong>TF</strong> (term frequency — how many times the term appears in the document), <strong>IDF</strong> (inverse document frequency — how rare the term is across all documents), and <strong>document length normalization</strong> (penalizes long documents for having the same TF as short ones).<br><br>
+          This is what Postgres <code>ts_rank()</code> does NOT have: IDF across the corpus and length normalization. Postgres's ts_rank is purely within-document frequency. A query for "laptop" ranks a 5-word title with one "laptop" the same as a 1000-word review with one "laptop" — wrong. BM25 normalizes by document length.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Lucene Segments: Immutable Writes + Merge</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🧱</div>
+        <div><div class="ic-title">Segment Architecture</div><div class="ic-subtitle">Why Elasticsearch is "near real-time" and not instantly consistent</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-elastic">Architecture</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">Segments and the refresh cycle</div>
+        <div class="mechanism-body">
+          Lucene (Elasticsearch's core) builds an inverted index in immutable <strong>segments</strong>. New documents are buffered in memory (the in-memory buffer). At the <strong>refresh interval</strong> (default: 1 second), the buffer is flushed to a new segment on disk and becomes searchable. This is what "near real-time" means: up to 1 second latency between indexing and visibility.<br><br>
+          Segments are immutable — once written, never modified. A DELETE marks a document as deleted in a bitset (tombstone). An UPDATE is a DELETE + INSERT of a new version. The old version stays in the segment until the segment is merged away.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Segment merging and its implications</div>
+        <div class="mechanism-body">
+          As segments accumulate, background <strong>merge</strong> processes combine small segments into larger ones, physically removing deleted documents (garbage collecting tombstones). During a merge, the merged segments are read sequentially, the new combined segment is written sequentially, and old segments are deleted. This is an LSM-tree pattern applied to inverted indexes.<br><br>
+          <strong>The implication:</strong> heavy indexing + frequent updates = high merge pressure = high I/O. Elasticsearch is not a good primary store for data with high update rates (e.g., order status updating frequently). It's optimized for append-heavy document indexing.
+        </div>
+      </div>
+      <div class="flow">
+        <div class="flow-box"><span class="fb-label">index request</span><span class="fb-name">document</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box" style="border-color:var(--elastic-light)"><span class="fb-label">in-memory</span><span class="fb-name">index buffer</span></div>
+        <div class="flow-arrow">→ refresh (1s) →</div>
+        <div class="flow-box"><span class="fb-label">new segment</span><span class="fb-name">searchable ✓</span></div>
+        <div class="flow-arrow">→ flush →</div>
+        <div class="flow-box"><span class="fb-label">translog fsync</span><span class="fb-name">durable ✓</span></div>
+        <div class="flow-arrow">+ background →</div>
+        <div class="flow-box"><span class="fb-label">merge</span><span class="fb-name">compact segments</span></div>
+      </div>
+      <div class="insight warn">
+        <div class="insight-label">⚠ The Durability Model — Often Missed</div>
+        The segment flush is NOT the durability point. Elasticsearch maintains a <strong>translog</strong> (similar to a WAL) — every indexed document is written to the translog before acknowledgment. Segment flushes happen every 30min or when the translog exceeds 512MB. On crash recovery: segments are intact (immutable), and the translog is replayed for the unflushed operations. This is exactly Postgres's WAL + heap file pattern, applied to inverted index segments.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Elasticsearch thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains inverted index: term → posting list of doc IDs, and why this is O(1) vs SQL's O(N) LIKE scan</div>
+      <div class="signal-item bad">"Elasticsearch is for search" without knowing what data structure makes it different from a B-tree</div>
+      <div class="signal-item good">Knows segments are immutable, deletes are tombstones, updates are delete+insert — explains high update cost</div>
+      <div class="signal-item bad">Treats Elasticsearch as a primary DB without knowing it has eventual consistency, no cross-document transactions</div>
+      <div class="signal-item good">Understands BM25 and why ts_rank in Postgres is a poor substitute</div>
+      <div class="signal-item bad">Says "just use Elasticsearch for everything" without mentioning the dual-write sync problem with primary DB</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     INFLUXDB / TIME-SERIES
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-influx">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--influx-glow); border: 1px solid rgba(34,173,246,0.3)">📈</div>
+    <div class="page-header-text">
+      <div class="subtitle">Time-Series · TSM Engine · Columnar Compression</div>
+      <h1 class="hl-influx">InfluxDB / Time-Series DB Internals</h1>
+      <p class="tagline">Time-series databases win on compression ratio and aggregation speed because they exploit two properties of metrics data that general-purpose databases cannot: values are monotonically time-ordered, and consecutive values are highly similar. The storage engine is designed entirely around this.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>TSM Engine: Time-Structured Merge Tree</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">📦</div>
+        <div><div class="ic-title">TSM Files + Columnar Compression</div><div class="ic-subtitle">InfluxDB's LSM-tree variant purpose-built for time-ordered float data</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-influx">Storage</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">The write path</div>
+        <div class="mechanism-body">
+          Writes go to a WAL (for durability) + in-memory Cache. The cache is a map from <code>(measurement, tags, field, timestamp)</code> to value. When the cache reaches threshold, it is flushed to a <strong>TSM file</strong> (Time-Structured Merge Tree file) — InfluxDB's equivalent of an SSTable.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">TSM file layout — columnar within time blocks</div>
+        <div class="mechanism-body">
+          A TSM file stores data <strong>column-by-column</strong> within blocks. For a given series (e.g., <code>cpu,host=web01 usage_idle</code>), all timestamps are stored together as a delta-encoded block, and all values are stored together as a Gorilla-compressed block. This is NOT row storage.<br><br>
+          <strong>Delta encoding for timestamps:</strong> Instead of storing [1609459200, 1609459260, 1609459320, ...], store [1609459200, +60, +60, +60, ...] — then run-length encode the deltas. Regular 60-second intervals compress to near zero.<br><br>
+          <strong>Gorilla compression for float values:</strong> XOR consecutive float64 values. Similar values XOR to small numbers with many leading zeros — stored in 1–2 bytes instead of 8. CPU usage going [72.3, 72.5, 72.2, 73.1] XORs to nearly all zeros. 10-50× compression on typical metrics.
+        </div>
+      </div>
+
+      <div class="insight key">
+        <div class="insight-label">🔑 Why Postgres Row Storage Cannot Compete</div>
+        Postgres stores each data point as a full row: (OID 4B + MVCC headers 23B + null bitmap + alignment) + timestamp 8B + metric_name text + value 8B = ~60-80 bytes per row. InfluxDB with Gorilla compression stores the same point in ~1-2 bytes for the value + ~1 byte for the timestamp delta. The same 1TB of metrics data = 5-15GB in InfluxDB. This is not a tuning difference — it's a storage model difference.
+      </div>
+
+      <div class="mechanism">
+        <div class="mechanism-title">Continuous queries and rollups</div>
+        <div class="mechanism-body">
+          InfluxDB's continuous queries and TimescaleDB's continuous aggregates maintain pre-computed summaries incrementally. When a new data point arrives in time window T, the summary for T is updated — a delta operation, not a full recompute. Postgres's materialized views do a full <code>SELECT ... GROUP BY</code> recompute on every <code>REFRESH</code>. This is why real-time Grafana dashboards on metrics data use time-series DBs — the query hits a pre-computed summary, not billions of raw rows.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>Series Cardinality: The Hidden Scaling Problem</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">⚠️</div>
+        <div><div class="ic-title">High Cardinality Tags</div><div class="ic-subtitle">The #1 operational mistake with time-series databases</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-influx">Pitfall</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">What series cardinality means</div>
+        <div class="mechanism-body">
+          A "series" in InfluxDB is a unique combination of measurement + tag set. Tags are indexed in an in-memory index (TSI — Time Series Index) for fast series lookup. If you tag a metric with <code>user_id</code> (100M users × 5 metrics × 3 environments = 1.5B series), the in-memory TSI explodes — InfluxDB's performance degrades dramatically because series metadata is kept in RAM.<br><br>
+          This is the opposite of what you'd expect: InfluxDB handles billions of <em>data points</em> fine, but millions of unique <em>series</em> (distinct tag combinations) is a known performance ceiling. The rule: tags should be low-cardinality categorical values (host, region, environment). Never use a user_id, request_id, or UUID as a tag.
+        </div>
+      </div>
+      <div class="insight probe">
+        <div class="insight-label">💬 Interview Signal</div>
+        Ask: "You want to track API latency per user_id in InfluxDB. What's wrong with this?" The correct answer: user_id as a tag = high-cardinality series explosion. The right approach: store user_id as a field (not a tag), or aggregate to user cohorts and use cohort as the tag. Candidates who don't know this have never operated a time-series DB under load.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Time-Series DB thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains Gorilla compression: XOR consecutive floats → leading zeros → 10-50× compression ratio</div>
+      <div class="signal-item bad">"InfluxDB compresses data well" without knowing the mechanism</div>
+      <div class="signal-item good">Distinguishes tags (indexed, low-cardinality) from fields (not indexed, high-cardinality OK)</div>
+      <div class="signal-item bad">Uses user_id or request_id as a tag; doesn't know the cardinality problem</div>
+      <div class="signal-item good">Knows continuous aggregates are incremental delta updates, not full recomputes like Postgres REFRESH</div>
+      <div class="signal-item bad">"Just use Postgres with a timestamp index for metrics" without addressing row storage overhead</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     VECTOR DATABASES
+══════════════════════════════════════════════════════════ -->
+<div class="page" id="page-vector">
+  <div class="page-header">
+    <div class="db-badge" style="background: var(--pinecone-glow); border: 1px solid rgba(176,108,244,0.3)">🧠</div>
+    <div class="page-header-text">
+      <div class="subtitle">Vector · HNSW · Approximate Nearest Neighbor</div>
+      <h1 class="hl-pinecone">Vector Database Internals</h1>
+      <p class="tagline">Vector databases exist because there is no index structure in any traditional database that can perform approximate nearest-neighbor search in high-dimensional space efficiently. The HNSW graph is the key data structure — understanding it explains every performance characteristic.</p>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">01</span><h2>HNSW: The Index That Makes ANN Fast</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">🕸</div>
+        <div><div class="ic-title">Hierarchical Navigable Small World Graph</div><div class="ic-subtitle">Why finding 10 similar vectors among 100M is sub-10ms</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pinecone">Core Index</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <div class="mechanism">
+        <div class="mechanism-title">The structure</div>
+        <div class="mechanism-body">
+          HNSW is a multi-layer proximity graph. Each vector is a node. Nodes are connected to their nearest neighbors with edges. The graph has multiple layers: the top layer has few nodes with long-range connections (fast coarse navigation), lower layers have more nodes with short-range connections (fine-grained local search), and the bottom layer contains all vectors.<br><br>
+          Think of it like a skip list but in high-dimensional space: the top layer is a highway (jump to roughly the right neighborhood), lower layers are local roads (find the exact nearest neighbors).
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">Query execution</div>
+        <div class="mechanism-body">
+          Given query vector Q: start at the entry point in the top layer. Greedily navigate to the neighbor closest to Q at that layer. Descend to the next layer at that node. Repeat — each layer narrows the search to a smaller neighborhood. At the bottom layer, perform a local beam search among the candidates. Return top-K by distance.<br><br>
+          <strong>Complexity: O(log N)</strong> for the hierarchical descent. The critical insight: you never compare Q against all N vectors. You compare against O(log N) nodes during descent plus a small constant of candidates at the bottom layer. For 100M vectors, you might compare against ~2,000 vectors instead of 100M.
+        </div>
+      </div>
+      <div class="mechanism">
+        <div class="mechanism-title">The approximate trade-off</div>
+        <div class="mechanism-body">
+          HNSW is <strong>approximate</strong> — it may miss the true nearest neighbor with some probability. The <code>ef_search</code> parameter controls the size of the candidate set during search: higher <code>ef_search</code> = better recall but slower. This is a fundamental trade-off: 95% recall at 5ms vs 99.9% recall at 50ms. For RAG, 95% recall is usually fine. For deduplication or fraud detection, you may need higher recall — which means either higher <code>ef_search</code> or brute force for a small candidate set.
+        </div>
+      </div>
+      <div class="insight key">
+        <div class="insight-label">🔑 Why SQL Cannot Do This</div>
+        The nearest-neighbor problem in 1536 dimensions has no efficient exact solution with a B-tree or any tree-based index — this is the "curse of dimensionality." In high dimensions, all points are approximately equidistant from each other, so tree partitioning (used by k-d trees, ball trees) becomes ineffective past ~20 dimensions. HNSW side-steps this with a graph where proximity is defined by the data distribution itself, not spatial partitioning.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-header"><span class="sh-num">02</span><h2>IVFFlat vs HNSW vs Brute Force</h2><div class="sh-line"></div></div>
+
+  <div class="internals-card">
+    <div class="ic-header open" onclick="toggleCard(this)">
+      <div class="ic-header-left">
+        <div class="ic-icon">⚖️</div>
+        <div><div class="ic-title">Index Trade-offs at Different Scales</div><div class="ic-subtitle">When to use each index type — and what the actual trade-offs are</div></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <span class="ic-tag tag-pinecone">Trade-offs</span>
+        <span class="ic-chevron">▼</span>
+      </div>
+    </div>
+    <div class="ic-body open">
+      <table class="ctable">
+        <tr>
+          <th>Method</th><th>Mechanism</th><th>Build time / RAM</th><th>Query time</th><th>Recall</th><th>Best for</th>
+        </tr>
+        <tr>
+          <td>Brute force</td>
+          <td>Compute distance to every vector. No index.</td>
+          <td>None / O(N × D) RAM</td>
+          <td>O(N × D) — linear in dataset</td>
+          <td>100% exact</td>
+          <td>&lt;50K vectors, or when exact recall is required and latency is flexible</td>
+        </tr>
+        <tr>
+          <td>IVFFlat</td>
+          <td>k-means cluster vectors into `nlist` centroids at build time. At query time, search top `nprobe` clusters only.</td>
+          <td>Hours for large N / moderate RAM (centroids in memory)</td>
+          <td>O(nprobe × cluster_size × D)</td>
+          <td>90-97% tunable via nprobe</td>
+          <td>100K–10M vectors. Lower RAM than HNSW. Acceptable if you can rebuild index periodically.</td>
+        </tr>
+        <tr>
+          <td>HNSW</td>
+          <td>Multi-layer proximity graph built during insertion. Each node connected to M nearest neighbors per layer.</td>
+          <td>Slow build (O(N log N)), high RAM (graph edges stored in memory)</td>
+          <td>O(log N) — sub-linear</td>
+          <td>95-99.9% tunable via ef_search</td>
+          <td>1M–1B vectors where query latency must be &lt;10ms. Supports live inserts without full rebuild.</td>
+        </tr>
+        <tr>
+          <td>Product Quantization (PQ)</td>
+          <td>Compress vectors by splitting into sub-vectors and quantizing each. Approximate distances in compressed space.</td>
+          <td>Fast build, very low RAM (4-16× compression)</td>
+          <td>Fast — operates on compressed vectors</td>
+          <td>80-95% — lower than HNSW</td>
+          <td>When dataset doesn't fit in RAM. Often combined with IVF (IVFPQ).</td>
+        </tr>
+      </table>
+      <div class="insight probe">
+        <div class="insight-label">💬 Interview Signal</div>
+        Ask: "You're building a RAG system with 50M document chunks. You're getting &lt;80% recall with pgvector. What do you change?" Good answer: pgvector's HNSW is RAM-bound for 50M × 1536 float32 = ~300GB of vector data alone + HNSW graph overhead. Move to a dedicated vector DB (Qdrant, Weaviate) that uses on-disk HNSW with mmap + quantization (int8) to reduce memory footprint 4× while maintaining &gt;95% recall. Tune ef_construction at build time and ef_search at query time separately.
+      </div>
+    </div>
+  </div>
+
+  <div class="signal-box">
+    <h4>What good Vector DB thinking sounds like in an interview</h4>
+    <div class="signal-grid">
+      <div class="signal-item good">Explains HNSW as a multi-layer graph, query as greedy descent O(log N), not a brute-force scan</div>
+      <div class="signal-item bad">"Vector DBs are just for AI" without understanding the ANN problem or why B-trees fail in high dimensions</div>
+      <div class="signal-item good">Knows the recall/latency trade-off (ef_search) and can discuss what recall is acceptable for the use case</div>
+      <div class="signal-item bad">"pgvector is fine for everything" without knowing the RAM ceiling for HNSW index construction</div>
+      <div class="signal-item good">Understands filtered ANN is harder than pure ANN — metadata filters can invalidate graph structure, requires pre-filter strategies</div>
+      <div class="signal-item bad">Can't explain the "curse of dimensionality" — why tree indexes fail in high dimensions</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const dbColors = {
+    pg: 'var(--pg-light)',
+    cassandra: 'var(--cassandra-light)',
+    redis: 'var(--redis-light)',
+    mongo: 'var(--mongo-light)',
+    neo4j: 'var(--neo4j-light)',
+    elastic: 'var(--elastic-light)',
+    influx: 'var(--influx-light)',
+    vector: 'var(--pinecone-light)'
+  };
+
+  function showPage(id, tab) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => {
+      t.classList.remove('active');
+      t.style.borderBottomColor = 'transparent';
+    });
+    document.getElementById('page-' + id).classList.add('active');
+    tab.classList.add('active');
+    tab.style.borderBottomColor = dbColors[id] || 'var(--text)';
+    window.scrollTo(0, 0);
+  }
+
+  function toggleCard(header) {
+    header.classList.toggle('open');
+    const body = header.nextElementSibling;
+    body.classList.toggle('open');
+  }
+
+  // Set initial active tab color
+  document.querySelector('.nav-tab.active').style.borderBottomColor = 'var(--pg-light)';
+</script>
+</body>
+</html>
