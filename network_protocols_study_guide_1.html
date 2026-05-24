@@ -1,0 +1,2141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Protocols — System Design Study Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@700;900&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --bg2: #13161e;
+    --bg3: #1a1d27;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8e4d9;
+    --text2: #9b9688;
+    --text3: #5e5c57;
+    --accent: #c9a96e;
+    --accent2: #e8c87a;
+    --blue: #5b8fcc;
+    --blue2: #7db3f0;
+    --green: #6aab7e;
+    --green2: #8fd4a0;
+    --red: #cc6b6b;
+    --red2: #f09090;
+    --purple: #9b7ec8;
+    --teal: #4fa9a9;
+    --teal2: #7ecece;
+    --mono: 'IBM Plex Mono', monospace;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --display: 'Playfair Display', Georgia, serif;
+    --gutter: clamp(1rem, 4vw, 3rem);
+    --max: 900px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.8;
+    padding: 0 var(--gutter) 6rem;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(13,15,20,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 0 var(--gutter);
+    margin: 0 calc(-1 * var(--gutter));
+    scrollbar-width: none;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  .nav-logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding: 14px 20px 14px 0;
+    border-right: 1px solid var(--border);
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+  nav a {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    text-decoration: none;
+    padding: 14px 14px;
+    white-space: nowrap;
+    transition: color 0.15s;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+  nav a:hover { color: var(--accent2); }
+
+  /* LAYOUT */
+  .wrap { max-width: var(--max); margin: 0 auto; }
+
+  /* HERO */
+  .hero {
+    padding: 5rem 0 3rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4rem;
+  }
+  .hero-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 1.2rem;
+  }
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    font-weight: 900;
+    line-height: 1.1;
+    color: #f5f0e8;
+    margin-bottom: 1.2rem;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+  }
+  .hero p {
+    font-size: 18px;
+    color: var(--text2);
+    max-width: 640px;
+    font-style: italic;
+    font-weight: 300;
+    line-height: 1.7;
+  }
+  .hero-meta {
+    margin-top: 2rem;
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .hero-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text3);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  /* SECTION */
+  .section {
+    margin-bottom: 5rem;
+    padding-top: 1rem;
+  }
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .section h2 {
+    font-family: var(--display);
+    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    font-weight: 700;
+    color: #f5f0e8;
+    line-height: 1.2;
+  }
+
+  /* PROFESSOR BOX */
+  .lecture {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 1.5rem 1.8rem;
+    margin: 2rem 0;
+  }
+  .lecture-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lecture-label::before {
+    content: '▸';
+    font-size: 9px;
+  }
+  .lecture p, .lecture ul, .lecture ol {
+    color: var(--text2);
+    font-size: 16px;
+  }
+  .lecture p + p { margin-top: 0.8rem; }
+
+  /* INTERVIEW BOX */
+  .interview {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 1.5rem 1.8rem;
+    margin: 2rem 0;
+  }
+  .interview-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--blue2);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .interview-label::before { content: '◆'; font-size: 8px; }
+  .qa { margin-bottom: 1.4rem; }
+  .qa:last-child { margin-bottom: 0; }
+  .q {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--blue2);
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+  }
+  .q::before { content: 'Q: '; opacity: 0.6; }
+  .a {
+    font-size: 15px;
+    color: var(--text2);
+    line-height: 1.75;
+    padding-left: 1rem;
+    border-left: 2px solid var(--border2);
+  }
+
+  /* CODE */
+  pre {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+    position: relative;
+  }
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .code-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.08em;
+  }
+  .code-lang {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+  pre code {
+    display: block;
+    padding: 1.2rem 1.4rem;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: #c5c0b5;
+    tab-size: 4;
+    white-space: pre;
+  }
+
+  /* Syntax highlighting */
+  .kw { color: #c792ea; }
+  .fn { color: var(--blue2); }
+  .st { color: var(--green2); }
+  .cm { color: #546e7a; font-style: italic; }
+  .num { color: var(--accent2); }
+  .dec { color: var(--teal2); }
+
+  /* DIAGRAM */
+  .diagram {
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+  }
+  .diagram pre {
+    background: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+  .diagram pre code {
+    padding: 0;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  /* CALLOUT */
+  .callout {
+    padding: 1rem 1.4rem;
+    border-radius: 4px;
+    margin: 1.5rem 0;
+    font-size: 15px;
+  }
+  .callout.warn {
+    background: rgba(201,169,110,0.08);
+    border: 1px solid rgba(201,169,110,0.2);
+    color: var(--accent2);
+  }
+  .callout.info {
+    background: rgba(91,143,204,0.08);
+    border: 1px solid rgba(91,143,204,0.2);
+    color: var(--blue2);
+  }
+  .callout.success {
+    background: rgba(106,171,126,0.08);
+    border: 1px solid rgba(106,171,126,0.2);
+    color: var(--green2);
+  }
+  .callout.danger {
+    background: rgba(204,107,107,0.08);
+    border: 1px solid rgba(204,107,107,0.2);
+    color: var(--red2);
+  }
+  .callout strong {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.4rem;
+    opacity: 0.8;
+  }
+
+  /* COMPARISON TABLE */
+  .table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border2);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-family: var(--mono); font-size: 12px; }
+  .tag-good { color: var(--green2); font-family: var(--mono); font-size: 12px; }
+  .tag-bad { color: var(--red2); font-family: var(--mono); font-size: 12px; }
+  .tag-mid { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+
+  /* INLINE EMPHASIS */
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--teal2);
+  }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--text2); }
+
+  /* SUBHEADINGS */
+  h3 {
+    font-family: var(--display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f0ebe0;
+    margin: 2.5rem 0 1rem;
+    line-height: 1.3;
+  }
+  h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 2rem 0 0.8rem;
+  }
+  p { margin-bottom: 1rem; }
+  ul, ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--text2);
+  }
+  li { margin-bottom: 0.3rem; }
+  li::marker { color: var(--accent); }
+
+  /* PROTOCOL CARD */
+  .proto-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+  .proto-card {
+    background: var(--bg2);
+    padding: 1.4rem 1.2rem;
+  }
+  .proto-card-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent2);
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+  .proto-card-desc {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .proto-card-layer {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* DIVIDER */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 3rem 0;
+  }
+
+  /* FOOTER */
+  footer {
+    text-align: center;
+    padding: 3rem 0 1rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.1em;
+  }
+
+  @media (max-width: 600px) {
+    body { font-size: 16px; }
+    pre code { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">SysDesign</span>
+  <a href="#tcp">TCP</a>
+  <a href="#http">HTTP</a>
+  <a href="#http2">HTTP/2</a>
+  <a href="#http3">HTTP/3</a>
+  <a href="#websocket">WebSocket</a>
+  <a href="#sse">SSE</a>
+  <a href="#grpc">gRPC</a>
+  <a href="#comparison">Comparison</a>
+  <a href="#reliability">Reliability</a>
+  <a href="#scalability">Scalability</a>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-tag">Systems Deep Dive</div>
+  <h1>Network Protocols<br>& <em>Transport Mechanisms</em></h1>
+  <p>A graduate-level treatment of TCP, HTTP, WebSocket, SSE, gRPC — covering the mechanics, reliability guarantees, and scalability implications that matter at production scale.</p>
+  <div class="hero-meta">
+    <span class="hero-badge">Professor Mode Included</span>
+    <span class="hero-badge">Expert-Level Q&amp;A</span>
+    <span class="hero-badge">Python Code Examples</span>
+    <span class="hero-badge">Production-Grade Patterns</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     0. PROTOCOL OVERVIEW
+════════════════════════════════════════════ -->
+<section class="section">
+  <div class="section-header">
+    <span class="section-num">00</span>
+    <h2>The Stack at a Glance</h2>
+  </div>
+
+  <div class="proto-cards">
+    <div class="proto-card">
+      <div class="proto-card-name">TCP</div>
+      <div class="proto-card-desc">Reliable, ordered, byte-stream transport. The foundation everything else sits on.</div>
+      <div class="proto-card-layer">OSI Layer 4 — Transport</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">HTTP/1.1</div>
+      <div class="proto-card-desc">Request/response over TCP. Text-based. Persistent connections with keep-alive.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">HTTP/2</div>
+      <div class="proto-card-desc">Binary framing, multiplexing, header compression, server push. One TCP connection.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">HTTP/3</div>
+      <div class="proto-card-desc">HTTP semantics over QUIC (UDP-based). Eliminates head-of-line blocking at transport level.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">WebSocket</div>
+      <div class="proto-card-desc">Full-duplex, persistent, low-overhead message framing. Upgraded from HTTP.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">SSE</div>
+      <div class="proto-card-desc">Server-to-client unidirectional stream over HTTP. Text/event-stream MIME type.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+    <div class="proto-card">
+      <div class="proto-card-name">gRPC</div>
+      <div class="proto-card-desc">RPC framework using HTTP/2 + Protocol Buffers. Bidirectional streaming, strict contracts.</div>
+      <div class="proto-card-layer">OSI Layer 7 — Application</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     1. TCP
+════════════════════════════════════════════ -->
+<section class="section" id="tcp">
+  <div class="section-header">
+    <span class="section-num">01</span>
+    <h2>TCP — Transmission Control Protocol</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>TCP is a <em>contract</em> between two endpoints. When you send a byte, TCP guarantees it arrives, it arrives exactly once, and it arrives in order. To enforce that contract it pays a tax: the three-way handshake, sequence numbers, acknowledgments, retransmission timers, and congestion control. Every higher-level protocol in this guide is either running on top of TCP or was specifically designed to escape one of TCP's penalties.</p>
+    <p>The three-way handshake costs one round-trip before the first byte of application data. TLS adds another 1–2 RTTs. On a 100ms transatlantic link that's 300ms of latency before your HTTP GET even begins. This is why CDNs, connection pooling, and HTTP/2 multiplexing exist — they amortize this cost across many requests.</p>
+    <p>Congestion control (CUBIC on Linux, BBR at Google) is the other critical concept. TCP probes network capacity by increasing its congestion window until it detects packet loss, then backs off. This means a brand-new connection starts <em>slow</em> — it literally has a slow-start phase. A connection that has been warm for 10 seconds will have a much larger window and much higher throughput than one that just opened.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>CLIENT                                SERVER
+  |                                      |
+  |  ——— SYN (seq=x) ————————————————→  |   ← SYN_SENT
+  |  ←—— SYN-ACK (seq=y, ack=x+1) ———  |   ← SYN_RECEIVED
+  |  ——— ACK (ack=y+1) ———————————————→ |   ← ESTABLISHED
+  |                                      |
+  |  ——— [TLS ClientHello] ————————————→ |   \
+  |  ←—— [TLS ServerHello + Cert] ———   |    |  +1–2 RTT for TLS 1.3
+  |  ——— [TLS Finished] ————————————→   |   /
+  |                                      |
+  |  ——— GET /api/data HTTP/1.1 ————→   |   ← FIRST app byte
+  |  ←—— 200 OK {body} ————————————     |
+  |                                      |
+  Total cold start latency: 2–3 RTTs before any data flows</code></pre>
+  </div>
+
+  <h3>Key TCP Mechanics You Must Know</h3>
+
+  <h4>Flow Control vs Congestion Control</h4>
+  <p><strong>Flow control</strong> is receiver-driven: the receiver advertises a <em>receive window</em> (rwnd) to tell the sender how much buffer space it has. <strong>Congestion control</strong> is network-driven: the sender maintains a <em>congestion window</em> (cwnd) based on inferred network conditions. The actual send rate is <code>min(rwnd, cwnd)</code>.</p>
+
+  <h4>TCP Options that matter in system design</h4>
+  <ul>
+    <li><strong>SO_REUSEADDR / SO_REUSEPORT</strong> — lets multiple sockets bind to the same port; critical for zero-downtime restarts and multi-process servers</li>
+    <li><strong>TCP_NODELAY</strong> — disables Nagle's algorithm; critical for latency-sensitive apps (Redis uses this)</li>
+    <li><strong>TCP_KEEPALIVE</strong> — detects dead connections; but it's slow (2h default). Use application-level heartbeats instead</li>
+    <li><strong>SO_LINGER</strong> — controls behavior on close(); affects TIME_WAIT state</li>
+  </ul>
+
+  <h4>TIME_WAIT — the production gotcha</h4>
+  <p>After closing a connection, the OS keeps it in TIME_WAIT for 2×MSL (~60s). Under high request rates, you can exhaust ephemeral ports (65k). Solutions: <code>net.ipv4.tcp_tw_reuse=1</code>, or better: connection pooling to reduce close() frequency.</p>
+
+<pre>
+<div class="code-header"><span class="code-title">tcp_server.py — Raw TCP with reliability patterns</span><span class="code-lang">Python</span></div>
+<code><span class="kw">import</span> socket
+<span class="kw">import</span> struct
+<span class="kw">import</span> threading
+<span class="kw">import</span> time
+
+<span class="cm"># --- Length-prefixed framing (CRITICAL: raw TCP is a BYTE STREAM, not message stream) ---
+# Without framing, you'll read partial messages. This is the #1 TCP beginner mistake.</span>
+
+<span class="kw">def</span> <span class="fn">send_message</span>(sock, msg: bytes):
+    <span class="st">"""Prefix every message with its 4-byte length."""</span>
+    length = struct.pack(<span class="st">'!I'</span>, len(msg))  <span class="cm"># network byte order</span>
+    sock.sendall(length + msg)
+
+<span class="kw">def</span> <span class="fn">recv_message</span>(sock) -> bytes:
+    <span class="st">"""Read exactly 4 bytes for length, then read that many bytes."""</span>
+    raw_len = <span class="fn">_recv_exactly</span>(sock, <span class="num">4</span>)
+    <span class="kw">if not</span> raw_len:
+        <span class="kw">raise</span> ConnectionResetError(<span class="st">"Connection closed"</span>)
+    msg_len = struct.unpack(<span class="st">'!I'</span>, raw_len)[<span class="num">0</span>]
+    <span class="kw">return</span> <span class="fn">_recv_exactly</span>(sock, msg_len)
+
+<span class="kw">def</span> <span class="fn">_recv_exactly</span>(sock, n: int) -> bytes:
+    <span class="st">"""Loop until n bytes received — TCP may deliver in fragments."""</span>
+    buf = b<span class="st">''</span>
+    <span class="kw">while</span> len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        <span class="kw">if not</span> chunk:
+            <span class="kw">return</span> <span class="kw">None</span>
+        buf += chunk
+    <span class="kw">return</span> buf
+
+<span class="cm"># --- Server with SO_REUSEADDR + TCP_NODELAY + connection-level keep-alive ---</span>
+
+<span class="kw">class</span> <span class="dec">TCPServer</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, host=<span class="st">'0.0.0.0'</span>, port=<span class="num">9000</span>):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        <span class="cm"># SO_REUSEADDR: allows bind() immediately after restart without waiting
+        # for TIME_WAIT to expire. Essential for zero-downtime deploys.</span>
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, <span class="num">1</span>)
+
+        <span class="cm"># SO_REUSEPORT: allows multiple processes to bind to same port.
+        # The kernel load-balances incoming connections. Use with pre-fork servers.</span>
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, <span class="num">1</span>)
+
+        self.sock.bind((host, port))
+        self.sock.listen(<span class="num">1024</span>)  <span class="cm"># backlog: queue depth for unaccepted connections</span>
+
+    <span class="kw">def</span> <span class="fn">handle_client</span>(self, conn, addr):
+        <span class="cm"># TCP_NODELAY: disable Nagle's algorithm.
+        # Nagle buffers small writes to reduce packet count — terrible for latency.
+        # Always set this for request/response workloads.</span>
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, <span class="num">1</span>)
+
+        <span class="cm"># TCP keepalive at OS level — detects half-open connections
+        # idle=10s, interval=5s, count=3 probes before declaring dead</span>
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, <span class="num">1</span>)
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, <span class="num">10</span>)
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, <span class="num">5</span>)
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, <span class="num">3</span>)
+
+        <span class="kw">try</span>:
+            <span class="kw">while True</span>:
+                msg = <span class="fn">recv_message</span>(conn)
+                <span class="cm"># Echo server — replace with your logic</span>
+                <span class="fn">send_message</span>(conn, b<span class="st">'ACK: '</span> + msg)
+        <span class="kw">except</span> (ConnectionResetError, BrokenPipeError):
+            <span class="kw">pass</span>
+        <span class="kw">finally</span>:
+            conn.close()
+
+    <span class="kw">def</span> <span class="fn">serve_forever</span>(self):
+        <span class="kw">while True</span>:
+            conn, addr = self.sock.accept()
+            t = threading.Thread(target=self.handle_client, args=(conn, addr), daemon=<span class="kw">True</span>)
+            t.start()
+</code></pre>
+
+  <h3>TCP Head-of-Line Blocking — The Deep Cut</h3>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>TCP's ordering guarantee is implemented in the kernel's receive buffer using a concept called the <em>reorder buffer</em> (or out-of-order queue). When segments arrive, the kernel places them in sequence-number order. The critical rule: <strong>the kernel will not deliver any bytes to the application until there are no gaps in the sequence space from the last delivered byte.</strong></p>
+    <p>So if segments with sequence numbers 1–1000, 2001–3000, and 3001–4000 have all arrived, but segment 1001–2000 is missing, the kernel holds all three arrived segments and delivers nothing. The application's <code>recv()</code> call blocks. This is TCP head-of-line blocking — one lost segment freezes the entire connection's data delivery, no matter how many other segments have arrived safely.</p>
+    <p>Now layer HTTP/2 on top. HTTP/2 multiplexes independent streams — stream 1 (an image), stream 3 (a CSS file), stream 5 (an API call) — over a single TCP connection. From HTTP/2's perspective these are completely unrelated. But TCP has no concept of streams. It sees one byte stream. Drop a TCP segment that belongs to stream 3's data, and TCP freezes delivery of all bytes — including perfectly intact data for streams 1 and 5. HTTP/2 cannot unblock them. The multiplexing that HTTP/2 provides at the application layer is entirely undone by TCP's ordering requirement at the transport layer.</p>
+    <p>This is not a bug in TCP — it is a direct consequence of its correctness guarantee. You cannot have ordered reliable delivery without blocking on gaps. QUIC's answer is to implement reliability <em>per stream</em> at the transport level: loss in stream 3 only blocks stream 3's delivery; streams 1 and 5 continue unaffected.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>TCP Receive Buffer — visualising the HOL block:
+
+Sequence space:  [1──1000][1001──2000][2001──3000][3001──4000][4001──5000]
+                  ✓ arrived  ✗ LOST      ✓ arrived   ✓ arrived   ✓ arrived
+
+Kernel reorder buffer state:
+  Next expected seq: 1001
+  Delivered to app:  bytes 1–1000
+  Held in buffer:    bytes 2001–5000  ← 3000 bytes stuck, CANNOT be delivered
+  Waiting for:       bytes 1001–2000  ← single lost segment
+
+  recv() from application → BLOCKS until 1001–2000 retransmitted and received
+
+  Retransmit RTT on a 50ms link = 50–150ms of freeze for ALL streams.
+
+─────────────────────────────────────────────────────────────────────────────
+HTTP/2 over that same TCP connection — 3 independent streams:
+
+  Stream 1 (image):   [...data...][...data...][...data...]   ← unrelated to stream 3
+  Stream 3 (CSS):     [...data...][  LOST   ][...data...]   ← drop here
+  Stream 5 (API):     [...data...][...data...]               ← unrelated to stream 3
+
+  TCP sees:  ──────────────────────[GAP]────────────────────
+             ↑ doesn't know about streams, just sequence numbers
+
+  Result: Stream 1 and Stream 5 data is in the TCP buffer but CANNOT
+          be delivered to the HTTP/2 layer until stream 3's lost
+          segment retransmits. HTTP/2's multiplexing is bypassed.
+
+─────────────────────────────────────────────────────────────────────────────
+QUIC over UDP — same loss scenario:
+
+  QUIC Stream 1:  received, delivered to app immediately  ✓
+  QUIC Stream 3:  gap detected, retransmit triggered      ← only stream 3 blocked
+  QUIC Stream 5:  received, delivered to app immediately  ✓
+
+  Each QUIC stream has its own delivery cursor.
+  Loss in one stream does NOT affect others.</code></pre>
+  </div>
+
+  <h4>Why can't TCP fix this with a protocol extension?</h4>
+  <p>The short answer is <em>ossification</em>. Middleboxes — NATs, firewalls, performance-enhancing proxies, WAN optimizers — have TCP's semantics baked into their silicon and firmware. Any TCP extension that changes the ordering semantics would be silently dropped, rewritten, or misinterpreted by the billions of middleboxes deployed in the field. RFC 8312 (CUBIC) and RFC 7413 (TCP Fast Open) both suffered from middlebox interference. This is exactly why QUIC runs over UDP — UDP packets are opaque to middleboxes, so QUIC's per-stream ordering can be implemented freely in userspace without hardware interference.</p>
+
+  <div class="callout warn">
+    <strong>When does TCP HOL blocking actually hurt you in production?</strong>
+    On a datacenter network (0.001% packet loss, sub-millisecond RTT), TCP HOL blocking is negligible — retransmits happen in microseconds. The pain is on mobile networks (1–3% loss, 50–200ms RTT) and satellite links (0.5–2% loss, 600ms RTT). At 1% loss with HTTP/2, roughly 1 in 100 connections experiences a freeze measurable in tens of milliseconds. At the 99th percentile tail latency this compounds badly. Google's QUIC rollout showed 30% p99 latency improvement on mobile, nearly all attributable to eliminating transport-level HOL blocking.
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">tcp_hol_demo.py — Observing HOL blocking vs UDP out-of-order delivery</span><span class="code-lang">Python</span></div>
+<code><span class="kw">import</span> socket
+<span class="kw">import</span> threading
+<span class="kw">import</span> time
+<span class="kw">import</span> struct
+
+<span class="cm"># ─── Demonstrate TCP HOL blocking ────────────────────────────────────────────
+# We simulate it by writing to the TCP receive buffer out of order using
+# two separate connections and showing that a stall on one blocks the reader.
+#
+# In a real kernel, you cannot inject out-of-order segments from Python
+# (that's below the socket API). This demo instead shows the EFFECT:
+# a slow sender on one "stream" (simulated by a thread) blocks a shared reader.</span>
+
+<span class="kw">def</span> <span class="fn">tcp_hol_simulation</span>():
+    <span class="st">"""
+    Simulate two logical streams over ONE TCP connection.
+    Stream A sends fast. Stream B introduces a 200ms gap (simulating loss + retransmit).
+    Observation: Stream A's data is stuck in the app even though it arrived fine —
+    because we must read the connection serially.
+    """</span>
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, <span class="num">1</span>)
+    server_sock.bind((<span class="st">'127.0.0.1'</span>, <span class="num">19876</span>))
+    server_sock.listen(<span class="num">1</span>)
+
+    <span class="kw">def</span> <span class="fn">server</span>():
+        conn, _ = server_sock.accept()
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, <span class="num">1</span>)
+        events = []
+        start = time.monotonic()
+
+        <span class="cm"># Read all messages in arrival order — no choice, TCP is serial</span>
+        <span class="kw">for</span> _ <span class="kw">in</span> range(<span class="num">6</span>):
+            raw = conn.recv(<span class="num">64</span>)
+            t = time.monotonic() - start
+            events.append((t, raw.decode().strip()))
+
+        <span class="kw">for</span> ts, msg <span class="kw">in</span> events:
+            print(f<span class="st">"  [{ts:.3f}s] received: {msg}"</span>)
+        conn.close()
+        server_sock.close()
+
+    threading.Thread(target=server, daemon=<span class="kw">True</span>).start()
+    time.sleep(<span class="num">0.05</span>)
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect((<span class="st">'127.0.0.1'</span>, <span class="num">19876</span>))
+    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, <span class="num">1</span>)
+
+    <span class="kw">def</span> <span class="fn">stream_a</span>():
+        <span class="cm"># Stream A: sends promptly at t=0, t=0.05, t=0.1</span>
+        <span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">3</span>):
+            client.sendall(f<span class="st">"A{i} (no delay)   \n"</span>.encode())
+            time.sleep(<span class="num">0.05</span>)
+
+    <span class="kw">def</span> <span class="fn">stream_b</span>():
+        <span class="cm"># Stream B: first message fine, then simulates a 200ms "loss+retransmit"</span>
+        client.sendall(<span class="st">b"B0 (on time)      \n"</span>)
+        time.sleep(<span class="num">0.2</span>)   <span class="cm"># &lt;-- simulated retransmit delay</span>
+        client.sendall(<span class="st">b"B1 (200ms late)   \n"</span>)
+        time.sleep(<span class="num">0.05</span>)
+        client.sendall(<span class="st">b"B2 (on time)      \n"</span>)
+
+    <span class="cm"># In real HTTP/2 over TCP, A and B frames are interleaved on ONE connection.
+    # The reader cannot skip B's stall to deliver A's waiting data.</span>
+    ta = threading.Thread(target=stream_a)
+    tb = threading.Thread(target=stream_b)
+    ta.start(); tb.start()
+    ta.join(); tb.join()
+    client.close()
+
+<span class="cm"># ─── Contrast: UDP allows out-of-order delivery ──────────────────────────────
+# With UDP datagrams, each packet is independent. The receiver can process
+# whatever arrives — no blocking on gaps. QUIC builds on this property.</span>
+
+<span class="kw">def</span> <span class="fn">udp_no_hol_demo</span>():
+    <span class="st">"""
+    UDP receiver processes datagrams as they arrive.
+    A delayed datagram from 'stream B' does NOT block 'stream A' datagrams.
+    QUIC builds per-stream ordering on top of exactly this property.
+    """</span>
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_sock.bind((<span class="st">'127.0.0.1'</span>, <span class="num">19877</span>))
+    server_sock.settimeout(<span class="num">1.0</span>)
+
+    <span class="kw">def</span> <span class="fn">udp_server</span>():
+        start = time.monotonic()
+        received = []
+        <span class="kw">while True</span>:
+            <span class="kw">try</span>:
+                data, _ = server_sock.recvfrom(<span class="num">64</span>)
+                t = time.monotonic() - start
+                received.append((t, data.decode().strip()))
+            <span class="kw">except</span> socket.timeout:
+                <span class="kw">break</span>
+        <span class="kw">for</span> ts, msg <span class="kw">in</span> received:
+            print(f<span class="st">"  [{ts:.3f}s] datagram: {msg}"</span>)
+        server_sock.close()
+
+    threading.Thread(target=udp_server, daemon=<span class="kw">True</span>).start()
+    time.sleep(<span class="num">0.05</span>)
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    target = (<span class="st">'127.0.0.1'</span>, <span class="num">19877</span>)
+
+    <span class="cm"># Stream A datagrams: arrive promptly</span>
+    <span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">3</span>):
+        client.sendto(f<span class="st">"A{i} stream_a     "</span>.encode(), target)
+        time.sleep(<span class="num">0.05</span>)
+
+    <span class="cm"># Stream B: B0 on time, B1 delayed 200ms (simulating loss), B2 on time</span>
+    client.sendto(<span class="st">b"B0 stream_b       "</span>, target)
+    time.sleep(<span class="num">0.2</span>)   <span class="cm"># B1 arrives late — but A's datagrams already delivered</span>
+    client.sendto(<span class="st">b"B1 late(200ms)    "</span>, target)
+    client.sendto(<span class="st">b"B2 stream_b       "</span>, target)
+    client.close()
+
+<span class="kw">if</span> __name__ == <span class="st">'__main__'</span>:
+    print(<span class="st">"=== TCP (serial, HOL blocked) ==="</span>)
+    <span class="fn">tcp_hol_simulation</span>()
+    time.sleep(<span class="num">0.3</span>)
+    print(<span class="st">"\n=== UDP (independent datagrams, no HOL block) ==="</span>)
+    <span class="fn">udp_no_hol_demo</span>()
+    time.sleep(<span class="num">1.0</span>)
+
+<span class="cm"># Expected output:
+#
+# === TCP (serial, HOL blocked) ===
+#   [0.001s] received: B0 (on time)        ← B0 first because it sends first
+#   [0.051s] received: A0 (no delay)
+#   [0.101s] received: A1 (no delay)
+#   [0.151s] received: A2 (no delay)
+#   [0.201s] received: B1 (200ms late)     ← 200ms gap in delivery timeline
+#   [0.201s] received: B2 (on time)
+#
+# === UDP (independent datagrams, no HOL block) ===
+#   [0.001s] datagram: B0 stream_b
+#   [0.051s] datagram: A0 stream_a
+#   [0.101s] datagram: A1 stream_a
+#   [0.151s] datagram: A2 stream_a         ← A fully delivered despite B being late
+#   [0.201s] datagram: B1 late(200ms)      ← B1 arrives late but didn't block A
+#   [0.201s] datagram: B2 stream_b</span>
+</code></pre>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Explain exactly why a dropped TCP segment causes HOL blocking across unrelated HTTP/2 streams.</div>
+      <div class="a">TCP is a byte-stream protocol with a single sequence space shared across the entire connection. The kernel's receive buffer tracks one "next expected sequence number." When a segment is missing, the kernel holds all subsequent arrived segments in an out-of-order queue and will not deliver any of them to the application — regardless of their content — until the gap is filled. HTTP/2 multiplexes streams by interleaving frames on that byte stream, but TCP has no awareness of stream boundaries. Drop one TCP segment carrying stream 3 frames, and the kernel withholds all data including fully-intact frames for streams 1 and 5. The HTTP/2 layer never gets a chance to deliver them. The application experiences a stall on all active streams until the retransmit completes — typically one RTT, but up to several RTTs under loss + congestion.</div>
+    </div>
+    <div class="qa">
+      <div class="q">Why can't TCP solve its own HOL blocking problem the way QUIC does, even with a new TCP extension?</div>
+      <div class="a">Two reasons. First, <em>semantic impossibility</em>: TCP's contract is ordered reliable delivery of a byte stream. To support per-stream unblocking, TCP would need to know which bytes belong to which stream — that's application-layer semantics. Adding it to TCP conflates transport and application concerns and would require every TCP implementation (in every OS kernel) to be updated. Second, <em>ossification</em>: the deployed base of middleboxes — NAT devices, firewalls, WAN optimisers, DPI appliances — have TCP semantics hardcoded. TCP extensions that deviate from expected behavior are silently dropped or corrupted. TCP Fast Open was specified in 2014 and still sees &lt;5% deployment because middleboxes block SYN data. Any "streams-aware TCP" extension would face the same fate. QUIC sidesteps this entirely: it runs over UDP (treated as opaque by middleboxes) and implements its own reliability per-stream in userspace, where no middlebox can interfere.</div>
+    </div>
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Explain what happens to TCP throughput on a 100ms RTT link with a 64KB receive window.</div>
+      <div class="a">Throughput is bounded by <code>window_size / RTT = 65536 bytes / 0.1s ≈ 5.2 Mbps</code>. This is the bandwidth-delay product problem. On high-latency links you must tune <code>net.core.rmem_max</code> and <code>net.ipv4.tcp_rmem</code> to increase the window, or use HTTP/2 which has its own flow control per stream independent of the OS TCP window.</div>
+    </div>
+    <div class="qa">
+      <div class="q">When would you choose UDP over TCP in a backend system?</div>
+      <div class="a">When the application can tolerate or handle loss itself and latency dominates: DNS (single packet, app retries), real-time gaming (stale frames useless), video conferencing (FEC handles loss), telemetry/metrics (occasional loss acceptable). QUIC is built on UDP because it wants to implement its own reliability per-stream, escaping TCP's head-of-line blocking where loss in stream A stalls stream B.</div>
+    </div>
+    <div class="qa">
+      <div class="q">You're seeing high TIME_WAIT connections on a service making many short-lived outbound connections. How do you fix it?</div>
+      <div class="a">Three approaches, in preference order: (1) Use connection pooling — stop closing connections between requests. (2) Enable <code>net.ipv4.tcp_tw_reuse=1</code> — allows reusing TIME_WAIT sockets for outbound connections when safe (requires timestamps). (3) If the server is the closer, use <code>SO_LINGER</code> with l_onoff=1, l_linger=0 to send RST instead of FIN/FIN-ACK, bypassing TIME_WAIT entirely — but this can cause data loss if the peer hasn't read all data.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     2. HTTP/1.1
+════════════════════════════════════════════ -->
+<section class="section" id="http">
+  <div class="section-header">
+    <span class="section-num">02</span>
+    <h2>HTTP/1.1 — The Workhorse</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>HTTP/1.1 added <em>persistent connections</em> (keep-alive) over HTTP/1.0's close-after-every-response. This was transformative — it meant you paid the TCP handshake cost once per connection rather than once per request. But HTTP/1.1 is fundamentally <em>serial</em>: while one request/response cycle is in flight, no other request can use that connection. Browsers work around this by opening 6 connections per origin — a hack that wastes sockets and causes thundering-herd on the server.</p>
+    <p>HTTP pipelining was supposed to fix this — send multiple requests without waiting for responses. It was specified in 1999 and virtually never deployed in production because proxy servers couldn't handle it correctly. HTTP/2 replaced pipelining with proper multiplexing.</p>
+  </div>
+
+  <h4>Connection keep-alive lifecycle</h4>
+  <div class="diagram">
+    <pre><code>WITHOUT keep-alive (HTTP/1.0):
+  TCP handshake → Request → Response → TCP close   (repeats every request)
+  Cost: 1 RTT per request just for TCP
+
+WITH keep-alive (HTTP/1.1 default):
+  TCP handshake → Req1 → Resp1 → Req2 → Resp2 → Req3 → Resp3 → [timeout/close]
+  Cost: 1 RTT amortized across N requests
+  But: Req2 must WAIT for Resp1 — head-of-line blocking at HTTP layer</code></pre>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">http_client_reliability.py — Retry, backoff, circuit breaker</span><span class="code-lang">Python</span></div>
+<code><span class="kw">import</span> httpx
+<span class="kw">import</span> asyncio
+<span class="kw">import</span> time
+<span class="kw">from</span> dataclasses <span class="kw">import</span> dataclass, field
+<span class="kw">from</span> enum <span class="kw">import</span> Enum, auto
+<span class="kw">from</span> typing <span class="kw">import</span> Optional
+
+<span class="cm"># ─── Circuit Breaker ───────────────────────────────────────────────────────────
+# Prevents cascading failures. If downstream is unhealthy, fail fast instead of
+# queuing threads/connections that will also fail.</span>
+
+<span class="kw">class</span> <span class="dec">CircuitState</span>(Enum):
+    CLOSED = auto()    <span class="cm"># Normal operation</span>
+    OPEN = auto()      <span class="cm"># Fail fast, no requests forwarded</span>
+    HALF_OPEN = auto() <span class="cm"># Probe: allow one request through</span>
+
+@dataclass
+<span class="kw">class</span> <span class="dec">CircuitBreaker</span>:
+    failure_threshold: int = <span class="num">5</span>
+    recovery_timeout: float = <span class="num">30.0</span>  <span class="cm"># seconds before OPEN → HALF_OPEN</span>
+    _state: CircuitState = field(default=CircuitState.CLOSED, init=<span class="kw">False</span>)
+    _failure_count: int = field(default=<span class="num">0</span>, init=<span class="kw">False</span>)
+    _opened_at: Optional[float] = field(default=<span class="kw">None</span>, init=<span class="kw">False</span>)
+
+    <span class="kw">def</span> <span class="fn">is_open</span>(self) -> bool:
+        <span class="kw">if</span> self._state == CircuitState.OPEN:
+            <span class="kw">if</span> time.monotonic() - self._opened_at > self.recovery_timeout:
+                self._state = CircuitState.HALF_OPEN
+                <span class="kw">return False</span>
+            <span class="kw">return True</span>
+        <span class="kw">return False</span>
+
+    <span class="kw">def</span> <span class="fn">record_success</span>(self):
+        self._failure_count = <span class="num">0</span>
+        self._state = CircuitState.CLOSED
+
+    <span class="kw">def</span> <span class="fn">record_failure</span>(self):
+        self._failure_count += <span class="num">1</span>
+        <span class="kw">if</span> self._failure_count >= self.failure_threshold:
+            self._state = CircuitState.OPEN
+            self._opened_at = time.monotonic()
+
+<span class="cm"># ─── Resilient HTTP Client ────────────────────────────────────────────────────</span>
+
+<span class="kw">class</span> <span class="dec">ResilientHTTPClient</span>:
+    <span class="st">"""
+    Production-grade HTTP client with:
+    - Connection pooling (shared across requests, not created per call)
+    - Exponential backoff with jitter
+    - Circuit breaker
+    - Timeout budget (connect timeout separate from read timeout)
+    """</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, base_url: str, max_retries=<span class="num">3</span>):
+        self.base_url = base_url
+        self.max_retries = max_retries
+        self.circuit = CircuitBreaker()
+
+        <span class="cm"># httpx.AsyncClient maintains a connection pool.
+        # limits controls pool size — tune based on your concurrency needs.
+        # CRITICAL: Instantiate once, reuse across requests. Never create per-request.</span>
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            limits=httpx.Limits(
+                max_connections=<span class="num">100</span>,       <span class="cm"># total connections</span>
+                max_keepalive_connections=<span class="num">20</span>, <span class="cm"># warm idle connections</span>
+                keepalive_expiry=<span class="num">30.0</span>,       <span class="cm"># evict after 30s idle</span>
+            ),
+            timeout=httpx.Timeout(
+                connect=<span class="num">2.0</span>,  <span class="cm"># fail fast on connection, not data</span>
+                read=<span class="num">10.0</span>,    <span class="cm"># reading response body</span>
+                write=<span class="num">5.0</span>,
+                pool=<span class="num">1.0</span>,    <span class="cm"># time waiting for a connection from pool</span>
+            ),
+            http2=<span class="kw">True</span>,  <span class="cm"># prefer HTTP/2 if server supports it</span>
+        )
+
+    <span class="kw">async def</span> <span class="fn">get</span>(self, path: str) -> httpx.Response:
+        <span class="kw">if</span> self.circuit.is_open():
+            <span class="kw">raise</span> RuntimeError(<span class="st">"Circuit OPEN: downstream service is unhealthy"</span>)
+
+        last_exc = <span class="kw">None</span>
+        <span class="kw">for</span> attempt <span class="kw">in</span> range(self.max_retries):
+            <span class="kw">try</span>:
+                resp = <span class="kw">await</span> self._client.get(path)
+                resp.raise_for_status()
+                self.circuit.record_success()
+                <span class="kw">return</span> resp
+
+            <span class="kw">except</span> (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) <span class="kw">as</span> e:
+                self.circuit.record_failure()
+                last_exc = e
+                <span class="cm"># Exponential backoff with full jitter: prevents thundering herd.
+                # cap at 10s, add random jitter so all retries don't fire simultaneously</span>
+                wait = <span class="fn">min</span>(<span class="num">10.0</span>, (<span class="num">2</span> ** attempt) * <span class="num">0.5</span>)
+                <span class="kw">import</span> random
+                wait += random.uniform(<span class="num">0</span>, wait)  <span class="cm"># full jitter</span>
+                <span class="kw">await</span> asyncio.sleep(wait)
+
+        <span class="kw">raise</span> last_exc
+
+    <span class="kw">async def</span> <span class="fn">close</span>(self):
+        <span class="kw">await</span> self._client.aclose()
+</code></pre>
+
+  <div class="callout warn">
+    <strong>Reliability Trap</strong>
+    Retry on HTTP 500 (server error) but NOT on HTTP 400 (client error — retrying is pointless). Also don't retry non-idempotent requests (POST) without idempotency keys. The Stripe and Twilio APIs demonstrate this pattern: client generates a UUID, sends it in the request header, and the server deduplicates.
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Why is exponential backoff with jitter better than exponential backoff without jitter?</div>
+      <div class="a">Without jitter, if N clients all hit an error at time T, they all back off for the same interval and retry simultaneously at T+2s, T+4s, etc. — the thundering herd just happens in waves. Jitter spreads retries uniformly across the backoff window. AWS's "Exponential Backoff and Jitter" blog (2015) showed "full jitter" outperforms decorrelated jitter and plain exponential backoff under contention.</div>
+    </div>
+    <div class="qa">
+      <div class="q">How does a circuit breaker differ from a timeout? Why do you need both?</div>
+      <div class="a">A timeout is per-request protection: it bounds how long any single call can block. A circuit breaker is system-level protection: after enough timeouts/errors, it stops sending requests entirely, giving the downstream time to recover and preventing thread/connection pool exhaustion in your service. Without a circuit breaker, a slow downstream can cause every thread in your pool to block at the timeout limit simultaneously, making your service appear dead even though the problem is downstream.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     3. HTTP/2
+════════════════════════════════════════════ -->
+<section class="section" id="http2">
+  <div class="section-header">
+    <span class="section-num">03</span>
+    <h2>HTTP/2 — Binary Multiplexing</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>HTTP/2 (RFC 7540, 2015) solves HTTP/1.1's head-of-line blocking at the application layer by introducing <em>streams</em> — independent, multiplexed request/response pairs over a <em>single</em> TCP connection. Each stream gets a stream ID, and frames from different streams are interleaved freely. A slow response to request #1 doesn't block request #2.</p>
+    <p>HPACK header compression is the other major win. HTTP headers are repetitive — <code>User-Agent</code>, <code>Accept</code>, <code>Authorization</code> are sent identically on every request. HPACK maintains a shared compression table between client and server, so repeated headers are replaced with a 1-byte index. This can reduce header overhead by 85–88% in practice.</p>
+    <p>The critical caveat: HTTP/2 only eliminates head-of-line blocking at the HTTP layer. At the TCP layer, a single lost packet still blocks all streams until retransmission. This is exactly the problem HTTP/3 addresses.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>HTTP/1.1: 6 connections × serial requests
+  conn1: [Req A ——— Resp A]
+  conn2: [Req B ——— Resp B]
+  conn3: [Req C ——————————— Resp C (slow)]   ← wastes connection
+  conn4: [Req D — Resp D]
+  conn5: [Req E — Resp E]
+  conn6: [Req F — Resp F]
+
+HTTP/2: 1 connection × interleaved streams
+  stream 1: [Req A frames] ... [Resp A frames]
+  stream 3: [Req B frames]     [Resp B frames]
+  stream 5: [Req C frames]              [Resp C (slow, doesn't block others)]
+  stream 7: [Req D frames] [Resp D]
+  ↑ All interleaved on the SAME TCP connection</code></pre>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">http2_server.py — HTTP/2 with hypercorn + async streaming</span><span class="code-lang">Python</span></div>
+<code><span class="cm"># pip install hypercorn quart httpx[http2]
+# Quart = async Flask; hypercorn supports HTTP/2 natively</span>
+
+<span class="kw">from</span> quart <span class="kw">import</span> Quart, Response, request
+<span class="kw">import</span> asyncio
+<span class="kw">import</span> json
+
+app = Quart(__name__)
+
+<span class="cm"># Server Push: proactively send assets the client will need.
+# Eliminates a round-trip — client doesn't need to parse HTML to discover CSS.</span>
+@app.route(<span class="st">'/page'</span>)
+<span class="kw">async def</span> <span class="fn">page_with_push</span>():
+    <span class="cm"># In real HTTP/2, you'd use Link: headers or framework push primitives.
+    # hypercorn handles the push based on Link preload headers.</span>
+    headers = {
+        <span class="st">'Link'</span>: <span class="st">'&lt;/static/app.css&gt;; rel=preload; as=style, &lt;/static/app.js&gt;; rel=preload; as=script'</span>
+    }
+    <span class="kw">return</span> Response(<span class="st">'&lt;html&gt;&lt;body&gt;Hello&lt;/body&gt;&lt;/html&gt;'</span>, headers=headers)
+
+<span class="cm"># HTTP/2 streaming response — sends chunks incrementally.
+# Client can start processing before the full response is received.</span>
+@app.route(<span class="st">'/stream-large-dataset'</span>)
+<span class="kw">async def</span> <span class="fn">stream_data</span>():
+    <span class="kw">async def</span> <span class="fn">generate</span>():
+        <span class="kw">for</span> i <span class="kw">in</span> range(<span class="num">1000</span>):
+            row = {<span class="st">"id"</span>: i, <span class="st">"value"</span>: i ** <span class="num">2</span>}
+            <span class="kw">yield</span> json.dumps(row) + <span class="st">"\n"</span>
+            <span class="kw">await</span> asyncio.sleep(<span class="num">0</span>)  <span class="cm"># yield control to event loop</span>
+
+    <span class="kw">return</span> Response(
+        <span class="fn">generate</span>(),
+        content_type=<span class="st">'application/x-ndjson'</span>,  <span class="cm"># newline-delimited JSON</span>
+        headers={<span class="st">'Cache-Control'</span>: <span class="st">'no-store'</span>},
+    )
+
+<span class="cm"># ─── Run with hypercorn for HTTP/2 ────────────────────────────────────────────</span>
+<span class="kw">if</span> __name__ == <span class="st">'__main__'</span>:
+    <span class="kw">import</span> hypercorn.asyncio
+    <span class="kw">import</span> hypercorn.config
+
+    config = hypercorn.config.Config()
+    config.bind = [<span class="st">"0.0.0.0:8443"</span>]
+    <span class="cm"># HTTP/2 requires TLS in browsers (though h2c cleartext exists)</span>
+    config.certfile = <span class="st">"cert.pem"</span>
+    config.keyfile = <span class="st">"key.pem"</span>
+    config.alpn_protocols = [<span class="st">"h2"</span>, <span class="st">"http/1.1"</span>]  <span class="cm"># ALPN negotiation</span>
+
+    asyncio.run(hypercorn.asyncio.serve(app, config))
+</code></pre>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">HTTP/2 is supposed to eliminate the need for domain sharding. Why might you keep it anyway?</div>
+      <div class="a">Domain sharding (serving assets from static1.example.com, static2.example.com) bypasses browser per-origin connection limits for HTTP/1.1. HTTP/2 makes this unnecessary because multiplexing handles concurrency on one connection. However, you might keep separate origins for: (1) cookies — static assets on a cookieless domain avoid sending cookies on every asset request, (2) CDN routing — different origins can be served from different CDN edge nodes or object storage, (3) independent TLS certificates for security isolation. The argument to sharding goes away; the argument to separate origins does not.</div>
+    </div>
+    <div class="qa">
+      <div class="q">Explain HPACK's security vulnerability and how it was mitigated.</div>
+      <div class="a">CRIME (2012) and BREACH attacks showed that if an attacker can inject partial plaintext (e.g., CSRF token guesses) into a compressed stream and observe the compressed size, they can deduce the secret byte-by-byte because compression ratio reveals shared substrings. HPACK mitigates this with the Huffman-only compression mode for sensitive headers and by never compressing headers that the client controls alongside server secrets in the same compression context. TLS also helps by separating compression from encryption (unlike SSL-era DEFLATE).</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     4. HTTP/3 + QUIC
+════════════════════════════════════════════ -->
+<section class="section" id="http3">
+  <div class="section-header">
+    <span class="section-num">04</span>
+    <h2>HTTP/3 &amp; QUIC — Eliminating Transport HOL Blocking</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>HTTP/2 moved head-of-line blocking from the application layer to the transport layer. On a lossy network — mobile, satellite, congested WiFi — a single lost TCP segment blocks <em>all</em> HTTP/2 streams until that segment is retransmitted. The solution is radical: don't use TCP.</p>
+    <p>QUIC (RFC 9000) reimplements reliable ordered delivery <em>per stream</em> on top of UDP. Loss in stream A only affects stream A. QUIC also merges the transport and TLS handshakes: a new connection requires one RTT (zero for session resumption with 0-RTT), versus TCP's minimum of two RTTs (SYN+ACK, then TLS). Connection migration is another killer feature: when your phone switches from WiFi to 4G, the IP address changes. TCP breaks (the 4-tuple changes). QUIC uses a connection ID independent of the IP:port pair, so the connection survives the network change.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>QUIC vs TCP+TLS comparison:
+
+TCP + TLS 1.3:
+  SYN → SYN-ACK → ACK                  (1 RTT: TCP handshake)
+  ClientHello → ServerHello → Finished  (1 RTT: TLS 1.3)
+  ─────────────────────────────────────
+  First data: 2 RTTs minimum
+
+QUIC (new connection):
+  Initial → Handshake → 1-RTT           (1 RTT: transport + TLS merged)
+  ─────────────────────────────────────
+  First data: 1 RTT
+
+QUIC (session resumption, 0-RTT):
+  Initial + Early Data (sent immediately, before handshake completes)
+  ─────────────────────────────────────
+  First data: 0 RTTs
+  ⚠ 0-RTT is replay-vulnerable — only use for idempotent requests
+
+Packet loss scenario (3 streams):
+  TCP:   stream1 ✓ stream2 ✓ [LOSS] stream3 ✓ stream1 ✓ [WAIT FOR RETRANSMIT] ...
+         Everything stalls.
+  QUIC:  stream1 ✓ [stream2 stalls] stream3 ✓ stream1 ✓ [stream2 retransmits]
+         Only the affected stream stalls.</code></pre>
+  </div>
+
+  <div class="callout info">
+    <strong>When HTTP/3 matters most</strong>
+    Real-world gains are highest on lossy networks (mobile, 1–2% packet loss). On a datacenter network with 0.001% loss, HTTP/2 and HTTP/3 are essentially equivalent. Google reported ~3% median latency improvement and 30% improvement at the 99th percentile for mobile users on lossy networks.
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Why is QUIC built on UDP? Doesn't that mean it has to re-implement TCP's reliability?</div>
+      <div class="a">Yes, that's exactly right — QUIC reimplements reliability, congestion control (NewReno, CUBIC, BBR), and flow control on top of UDP. The reason for UDP is ossification: middleboxes (firewalls, NATs, load balancers) have hardcoded TCP behavior and would corrupt or block any new TCP extensions. UDP is treated as opaque payload and passes through. QUIC's "complexity tax" is worth paying because the gains — per-stream loss recovery, 0-RTT handshake, connection migration — require protocol-level changes that TCP's ossification makes impossible to deploy.</div>
+    </div>
+    <div class="qa">
+      <div class="q">What are the operational challenges of deploying HTTP/3 in your infrastructure?</div>
+      <div class="a">Several real ones: (1) UDP is often rate-limited or blocked by enterprise firewalls — you need graceful fallback to HTTP/2. (2) Load balancers need to understand QUIC's connection IDs to route consistently, since IP:port changes with connection migration. (3) QUIC is CPU-intensive because encryption is mandatory and in userspace, unlike TCP which offloads to the kernel. (4) Observability tooling (packet captures, Wireshark) works differently with QUIC's encrypted headers. (5) Server-side implementation maturity — nginx QUIC support is still relatively new vs. its battle-tested HTTP/2 stack.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     5. WebSocket
+════════════════════════════════════════════ -->
+<section class="section" id="websocket">
+  <div class="section-header">
+    <span class="section-num">05</span>
+    <h2>WebSocket — Full-Duplex Persistent Channels</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>WebSocket solves a fundamental HTTP limitation: HTTP is client-initiated. The server cannot send data to the client without the client asking first. Long-polling was the hack — the client sends a request, the server holds it open until it has data to send, then the client immediately sends another. This works but wastes resources and has high latency.</p>
+    <p>WebSocket upgrades an existing HTTP/1.1 connection to a persistent, full-duplex channel. The upgrade is an HTTP handshake — which means it traverses HTTP infrastructure (proxies, load balancers) gracefully. Once upgraded, frames can flow in both directions independently, with minimal framing overhead (2–10 bytes vs. hundreds of bytes for HTTP headers).</p>
+    <p>The operational reality: WebSocket connections are long-lived, which means your servers hold <em>connection state</em>. This is the central scalability challenge. If a user's WebSocket is connected to server A and server A goes down, the client must reconnect — possibly to server B, which has no knowledge of the prior session. You must externalize connection state to a shared store (Redis Pub/Sub is the canonical pattern) or accept that reconnection is part of the protocol.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>WebSocket Upgrade Handshake:
+  Client → Server:
+    GET /ws HTTP/1.1
+    Upgrade: websocket
+    Connection: Upgrade
+    Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==   ← random base64
+    Sec-WebSocket-Version: 13
+
+  Server → Client:
+    HTTP/1.1 101 Switching Protocols
+    Upgrade: websocket
+    Connection: Upgrade
+    Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=   ← SHA1(key + GUID)
+
+  After this point: raw WebSocket frames, no HTTP overhead.
+
+WebSocket Frame Structure (minimal overhead):
+  ┌─────────────────────────────────────┐
+  │ FIN(1) RSV(3) Opcode(4) MASK(1) Payload Length(7/16/64 bits) │
+  │ Masking Key (32 bits, client→server only)                     │
+  │ Payload Data                                                   │
+  └─────────────────────────────────────┘
+  Overhead: 2–10 bytes vs ~500 bytes for HTTP headers</code></pre>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">websocket_server_scalable.py — WebSocket with Redis Pub/Sub fanout</span><span class="code-lang">Python</span></div>
+<code><span class="cm"># pip install fastapi uvicorn websockets redis[asyncio]
+# Architecture: WebSocket server + Redis Pub/Sub for cross-server message fanout
+# This is how Slack, Discord, etc. scale WebSockets across multiple server instances.</span>
+
+<span class="kw">from</span> fastapi <span class="kw">import</span> FastAPI, WebSocket, WebSocketDisconnect
+<span class="kw">import</span> redis.asyncio <span class="kw">as</span> aioredis
+<span class="kw">import</span> asyncio
+<span class="kw">import</span> json
+
+app = FastAPI()
+
+<span class="cm"># ─── Connection Manager ───────────────────────────────────────────────────────
+# Manages all WebSocket connections on THIS server instance.
+# Cross-server fanout is handled by Redis Pub/Sub.</span>
+
+<span class="kw">class</span> <span class="dec">ConnectionManager</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        <span class="cm"># room_id → set of WebSocket connections on this server</span>
+        self.rooms: dict[str, set[WebSocket]] = {}
+
+    <span class="kw">async def</span> <span class="fn">join</span>(self, room_id: str, ws: WebSocket):
+        <span class="kw">await</span> ws.accept()
+        self.rooms.setdefault(room_id, set()).add(ws)
+
+    <span class="kw">def</span> <span class="fn">leave</span>(self, room_id: str, ws: WebSocket):
+        <span class="kw">if</span> room_id <span class="kw">in</span> self.rooms:
+            self.rooms[room_id].discard(ws)
+
+    <span class="kw">async def</span> <span class="fn">broadcast_local</span>(self, room_id: str, msg: str, exclude: WebSocket = <span class="kw">None</span>):
+        <span class="st">"""Send to all connections on this server for the given room."""</span>
+        dead = set()
+        <span class="kw">for</span> ws <span class="kw">in</span> self.rooms.get(room_id, set()):
+            <span class="kw">if</span> ws == exclude: <span class="kw">continue</span>
+            <span class="kw">try</span>:
+                <span class="kw">await</span> ws.send_text(msg)
+            <span class="kw">except</span> Exception:
+                dead.add(ws)  <span class="cm"># dead connections removed lazily</span>
+        self.rooms[room_id] -= dead
+
+manager = ConnectionManager()
+redis_client: aioredis.Redis = <span class="kw">None</span>
+
+@app.on_event(<span class="st">"startup"</span>)
+<span class="kw">async def</span> <span class="fn">startup</span>():
+    <span class="kw">global</span> redis_client
+    redis_client = aioredis.from_url(<span class="st">"redis://localhost:6379"</span>)
+    <span class="cm"># Start Redis subscriber in background task</span>
+    asyncio.create_task(<span class="fn">redis_subscriber</span>())
+
+<span class="kw">async def</span> <span class="fn">redis_subscriber</span>():
+    <span class="st">"""
+    Listens to ALL Redis channels (ws:*) and fans out to local WebSocket connections.
+    Each server instance runs this loop. When server A publishes to Redis,
+    ALL servers receive it and forward to their local connections.
+    """</span>
+    pubsub = redis_client.pubsub()
+    <span class="kw">await</span> pubsub.psubscribe(<span class="st">"ws:*"</span>)  <span class="cm"># pattern subscribe: all ws: channels</span>
+
+    <span class="kw">async for</span> message <span class="kw">in</span> pubsub.listen():
+        <span class="kw">if</span> message[<span class="st">"type"</span>] != <span class="st">"pmessage"</span>: <span class="kw">continue</span>
+        channel = message[<span class="st">"channel"</span>].decode().removeprefix(<span class="st">"ws:"</span>)
+        data = message[<span class="st">"data"</span>].decode()
+        <span class="kw">await</span> manager.broadcast_local(channel, data)
+
+@app.websocket(<span class="st">"/ws/{room_id}"</span>)
+<span class="kw">async def</span> <span class="fn">websocket_endpoint</span>(ws: WebSocket, room_id: str):
+    <span class="kw">await</span> manager.join(room_id, ws)
+    <span class="kw">try</span>:
+        <span class="kw">while True</span>:
+            data = <span class="kw">await</span> ws.receive_text()
+            payload = json.loads(data)
+
+            <span class="cm"># Publish to Redis — ALL server instances will fanout to their clients.
+            # This is the key: Redis decouples servers from knowing about each other.</span>
+            <span class="kw">await</span> redis_client.publish(f<span class="st">"ws:{room_id}"</span>, json.dumps({
+                <span class="st">"room"</span>: room_id,
+                <span class="st">"payload"</span>: payload,
+            }))
+
+    <span class="kw">except</span> WebSocketDisconnect:
+        manager.leave(room_id, ws)
+
+<span class="cm"># ─── Heartbeat / Ping-Pong ───────────────────────────────────────────────────
+# The WebSocket protocol has built-in ping/pong frames.
+# Use them to detect dead connections. Without this, a crashed client keeps
+# the server's connection open indefinitely, leaking memory.</span>
+
+@app.websocket(<span class="st">"/ws-heartbeat/{client_id}"</span>)
+<span class="kw">async def</span> <span class="fn">ws_with_heartbeat</span>(ws: WebSocket, client_id: str):
+    <span class="kw">await</span> ws.accept()
+    <span class="kw">try</span>:
+        <span class="kw">while True</span>:
+            <span class="kw">try</span>:
+                <span class="cm"># wait_for with timeout: if no message in 30s, send ping</span>
+                data = <span class="kw">await</span> asyncio.wait_for(ws.receive_text(), timeout=<span class="num">30.0</span>)
+                <span class="kw">await</span> ws.send_text(f<span class="st">"echo: {data}"</span>)
+            <span class="kw">except</span> asyncio.TimeoutError:
+                <span class="cm"># No message received — send ping to verify connection is alive.</span>
+                <span class="kw">await</span> ws.send_bytes(b<span class="st">'\x89\x00'</span>)  <span class="cm"># WebSocket ping frame</span>
+    <span class="kw">except</span> WebSocketDisconnect:
+        <span class="kw">pass</span>
+</code></pre>
+
+  <div class="callout danger">
+    <strong>Scalability Warning: Sticky Sessions</strong>
+    Without the Redis Pub/Sub pattern above, you must use sticky sessions (load balancer routes a client always to the same server). Sticky sessions are fragile — server restarts break all connections pinned to it. The pub/sub pattern decouples connection topology from message routing and is the industry standard approach.
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">You have 1 million concurrent WebSocket connections. Walk me through the architecture.</div>
+      <div class="a">Each server can hold ~50-100k connections (memory-bound at ~4-8KB/connection for kernel buffers, event loop overhead). So you need 10-20 servers. Key design decisions: (1) <em>Stateless message routing via Redis Pub/Sub</em> — no sticky sessions needed, any server can accept reconnections. (2) <em>Horizontal WebSocket gateway tier</em> separate from application servers — the gateway only handles connection multiplexing, app servers handle business logic via async queues. (3) <em>Connection metadata in Redis</em> — maps user_id → [server_id, connection_id] so you can target specific users. (4) <em>Load balancer with WebSocket support</em> — Nginx/HAProxy or AWS ALB with sticky routing as a fallback. (5) Monitor file descriptor limits — 1M connections requires ulimit -n >> 1M and kernel tuning.</div>
+    </div>
+    <div class="qa">
+      <div class="q">How do you handle WebSocket reconnections without losing messages?</div>
+      <div class="a">The client must track the last message sequence number it received. On reconnect, it sends that sequence number. The server buffers the last N seconds of messages in Redis (LPUSH with LTRIM) or a message queue (Kafka with consumer offsets). The server replays any messages the client missed. This is the pattern Discord uses with their "resume" opcode. The window for buffering is a product decision: larger buffer = more storage cost, smaller buffer = higher risk of permanent loss on long disconnections. Kafka is ideal here because consumer offset tracking is built-in.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     6. SSE
+════════════════════════════════════════════ -->
+<section class="section" id="sse">
+  <div class="section-header">
+    <span class="section-num">06</span>
+    <h2>SSE — Server-Sent Events</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>SSE is the simplest server-push mechanism: it's just an HTTP response that never ends. The <code>Content-Type: text/event-stream</code> tells the browser to treat the response as a stream of events. The wire format is dead simple — newline-delimited text fields. Browsers have a built-in <code>EventSource</code> API that automatically reconnects with the <code>Last-Event-ID</code> header, enabling at-least-once delivery semantics without any additional machinery.</p>
+    <p>SSE is vastly underused in industry. If your use case is server-to-client only (notifications, live dashboards, LLM streaming, stock tickers, order status), SSE is simpler, more scalable, and more proxy-friendly than WebSocket. It goes over plain HTTP so CDNs, proxies, and load balancers handle it without special configuration. HTTP/2 SSE is even better — you can have multiple event streams multiplexed on a single connection.</p>
+    <p>The limitation is directionality: only server can send. If the client needs to send data, it makes a separate HTTP request. This is actually an advantage for auditing, rate limiting, and middleware — the client's requests go through normal HTTP infrastructure while the server's events stream over SSE.</p>
+  </div>
+
+  <div class="diagram">
+    <pre><code>SSE Wire Format (text/event-stream):
+
+  HTTP/1.1 200 OK
+  Content-Type: text/event-stream
+  Cache-Control: no-cache
+  Connection: keep-alive
+  X-Accel-Buffering: no          ← disable Nginx buffering!
+
+  id: 1                          ← Last-Event-ID for reconnect resume
+  event: price-update            ← custom event type (optional)
+  data: {"symbol":"AAPL","price":189.42}
+  retry: 3000                    ← tell client to wait 3s before reconnect
+                                 ← blank line = event boundary
+  id: 2
+  data: {"symbol":"GOOG","price":141.87}
+
+  :heartbeat                     ← comment line (: prefix) = keepalive, not an event
+
+Client auto-reconnect:
+  On disconnect → browser waits `retry` ms → sends:
+  GET /events HTTP/1.1
+  Last-Event-ID: 2               ← server can replay missed events</code></pre>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">sse_server.py — Production SSE with backpressure and resume</span><span class="code-lang">Python</span></div>
+<code><span class="kw">from</span> fastapi <span class="kw">import</span> FastAPI, Request
+<span class="kw">from</span> fastapi.responses <span class="kw">import</span> StreamingResponse
+<span class="kw">import</span> asyncio
+<span class="kw">import</span> json
+<span class="kw">import</span> time
+<span class="kw">from</span> collections <span class="kw">import</span> deque
+
+app = FastAPI()
+
+<span class="cm"># ─── Event Buffer for replay-on-reconnect ─────────────────────────────────────</span>
+<span class="kw">class</span> <span class="dec">EventBuffer</span>:
+    <span class="st">"""Ring buffer of recent events. On reconnect, replay events after last_event_id."""</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, maxlen=<span class="num">1000</span>):
+        self.buffer: deque = deque(maxlen=maxlen)
+        self.counter = <span class="num">0</span>
+
+    <span class="kw">def</span> <span class="fn">add</span>(self, event_type: str, data: dict) -> dict:
+        self.counter += <span class="num">1</span>
+        event = {<span class="st">"id"</span>: self.counter, <span class="st">"event"</span>: event_type, <span class="st">"data"</span>: data}
+        self.buffer.append(event)
+        <span class="kw">return</span> event
+
+    <span class="kw">def</span> <span class="fn">since</span>(self, last_id: int) -> list:
+        <span class="st">"""Return all events after last_id. Empty list if fully caught up."""</span>
+        <span class="kw">return</span> [e <span class="kw">for</span> e <span class="kw">in</span> self.buffer <span class="kw">if</span> e[<span class="st">"id"</span>] > last_id]
+
+event_buffer = EventBuffer()
+subscribers: set[asyncio.Queue] = set()
+
+<span class="kw">def</span> <span class="fn">format_sse</span>(event: dict) -> str:
+    <span class="st">"""Format event as SSE wire format."""</span>
+    lines = [
+        f<span class="st">"id: {event['id']}"</span>,
+        f<span class="st">"event: {event['event']}"</span>,
+        f<span class="st">"data: {json.dumps(event['data'])}"</span>,
+        <span class="st">""</span>,  <span class="cm"># blank line = event boundary</span>
+    ]
+    <span class="kw">return</span> <span class="st">"\n"</span>.join(lines)
+
+@app.get(<span class="st">"/events"</span>)
+<span class="kw">async def</span> <span class="fn">event_stream</span>(request: Request):
+    <span class="cm"># Read Last-Event-ID for reconnect resume</span>
+    last_event_id = int(request.headers.get(<span class="st">"last-event-id"</span>, <span class="num">0</span>))
+    queue: asyncio.Queue = asyncio.Queue(maxsize=<span class="num">100</span>)  <span class="cm"># bounded = backpressure</span>
+    subscribers.add(queue)
+
+    <span class="kw">async def</span> <span class="fn">generate</span>():
+        <span class="kw">try</span>:
+            <span class="cm"># 1. Replay missed events on reconnect</span>
+            <span class="kw">for</span> missed <span class="kw">in</span> event_buffer.since(last_event_id):
+                <span class="kw">yield</span> <span class="fn">format_sse</span>(missed)
+
+            <span class="cm"># 2. Send heartbeat every 15s to prevent proxy timeouts
+            #    Many proxies (nginx, AWS ALB) will close idle connections.
+            #    A comment line keeps the connection alive without creating an event.</span>
+            heartbeat_task = asyncio.create_task(<span class="fn">_heartbeat</span>(queue))
+
+            <span class="kw">while True</span>:
+                <span class="cm"># Check if client disconnected</span>
+                <span class="kw">if await</span> request.is_disconnected():
+                    heartbeat_task.cancel()
+                    <span class="kw">break</span>
+
+                <span class="kw">try</span>:
+                    event = <span class="kw">await</span> asyncio.wait_for(queue.get(), timeout=<span class="num">20.0</span>)
+                    <span class="kw">if</span> event <span class="kw">is None</span>:  <span class="cm"># heartbeat sentinel</span>
+                        <span class="kw">yield</span> <span class="st">":heartbeat\n\n"</span>
+                    <span class="kw">else</span>:
+                        <span class="kw">yield</span> <span class="fn">format_sse</span>(event)
+                <span class="kw">except</span> asyncio.TimeoutError:
+                    <span class="kw">yield</span> <span class="st">":keepalive\n\n"</span>
+
+        <span class="kw">finally</span>:
+            subscribers.discard(queue)
+
+    <span class="kw">async def</span> <span class="fn">_heartbeat</span>(q: asyncio.Queue):
+        <span class="kw">while True</span>:
+            <span class="kw">await</span> asyncio.sleep(<span class="num">15</span>)
+            <span class="kw">try</span>:
+                q.put_nowait(<span class="kw">None</span>)  <span class="cm"># None = heartbeat signal</span>
+            <span class="kw">except</span> asyncio.QueueFull:
+                <span class="kw">pass</span>  <span class="cm"># slow consumer — drop heartbeat, not event</span>
+
+    <span class="kw">return</span> StreamingResponse(
+        <span class="fn">generate</span>(),
+        media_type=<span class="st">"text/event-stream"</span>,
+        headers={
+            <span class="st">"Cache-Control"</span>: <span class="st">"no-cache"</span>,
+            <span class="st">"X-Accel-Buffering"</span>: <span class="st">"no"</span>,     <span class="cm"># CRITICAL: disable Nginx buffering</span>
+            <span class="st">"Access-Control-Allow-Origin"</span>: <span class="st">"*"</span>,
+        }
+    )
+
+<span class="kw">async def</span> <span class="fn">publish_event</span>(event_type: str, data: dict):
+    <span class="st">"""Publish an event to all connected SSE clients."""</span>
+    event = event_buffer.add(event_type, data)
+    dead = set()
+    <span class="kw">for</span> q <span class="kw">in</span> subscribers:
+        <span class="kw">try</span>:
+            q.put_nowait(event)  <span class="cm"># non-blocking: drop slow consumers</span>
+        <span class="kw">except</span> asyncio.QueueFull:
+            dead.add(q)  <span class="cm"># slow consumer — could also send error event</span>
+    subscribers -= dead
+</code></pre>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">When would you choose SSE over WebSocket?</div>
+      <div class="a">SSE when: (1) you only need server-to-client push — news feeds, notifications, LLM token streaming, order status, live dashboards; (2) infrastructure simplicity matters — SSE is plain HTTP, every proxy/CDN/load balancer handles it without configuration; (3) automatic reconnection is important — EventSource handles this natively including Last-Event-ID replay; (4) you want per-connection auth via HTTP headers (WebSocket upgrade request supports headers, but the persistent frame channel has no native HTTP auth). WebSocket when: bidirectional low-latency is required — chat, gaming, collaborative editing, trading terminals where the client sends high-frequency data.</div>
+    </div>
+    <div class="qa">
+      <div class="q">How would you handle 100,000 SSE connections on a single FastAPI server?</div>
+      <div class="a">The async model helps enormously — each SSE connection is a coroutine, not a thread. 100k coroutines sharing one event loop is feasible. Key concerns: (1) Memory — ~2-4KB per connection for queue + coroutine stack. 100k × 4KB = ~400MB, acceptable. (2) Event fan-out — iterating 100k queues on every publish is O(N). Solution: use asyncio.gather() for parallel puts, or a pub/sub tree. (3) Queue backpressure — bound queue size and drop slow consumers rather than letting them drag down the whole server. (4) Nginx buffering — must set <code>X-Accel-Buffering: no</code> or Nginx buffers the entire response before forwarding. (5) At truly large scale, separate the SSE gateway from the application logic — Nginx can proxy SSE streams, keeping app servers stateless.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     7. gRPC
+════════════════════════════════════════════ -->
+<section class="section" id="grpc">
+  <div class="section-header">
+    <span class="section-num">07</span>
+    <h2>gRPC — Contract-First RPC over HTTP/2</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>gRPC is not just a protocol — it's an RPC framework with strong opinions. You define your service in Protocol Buffers (.proto files), generate client and server stubs in any supported language, and the framework handles serialization, multiplexing, and load balancing. The contract is <em>explicit</em> and <em>typed</em>, which makes gRPC excellent for internal service-to-service communication where you control both sides.</p>
+    <p>The performance advantage over REST+JSON is real but often overstated. Protobuf encoding is 3-10x smaller than JSON and 5-7x faster to parse. But more importantly, gRPC gives you bidirectional streaming: a client can open a stream and send requests, the server sends responses — all on a single HTTP/2 connection, multiplexed with other calls. This enables patterns impossible with REST: server streaming (long-running queries), client streaming (chunked upload), and bidirectional streaming (interactive sessions).</p>
+    <p>The critical operational downside: gRPC is not natively browser-compatible. HTTP/2 trailers (used for gRPC status codes) are not accessible from browser JavaScript. gRPC-Web is the workaround, but it requires an Envoy proxy to translate. For browser clients, REST or SSE/WebSocket remain the right choice.</p>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">service.proto + grpc_server.py — gRPC with streaming and retry</span><span class="code-lang">Python</span></div>
+<code><span class="cm"># service.proto (compile with: python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. service.proto)</span>
+
+<span class="st">"""
+syntax = "proto3";
+
+service DataService {
+  // Unary: client sends one, server responds once
+  rpc GetItem (ItemRequest) returns (ItemResponse);
+
+  // Server streaming: client sends one, server streams many
+  rpc StreamItems (StreamRequest) returns (stream ItemResponse);
+
+  // Client streaming: client streams many, server responds once
+  rpc BatchInsert (stream ItemRequest) returns (BatchResult);
+
+  // Bidirectional streaming: both sides stream freely
+  rpc Chat (stream Message) returns (stream Message);
+}
+
+message ItemRequest  { string id = 1; }
+message ItemResponse { string id = 1; string data = 2; int64 timestamp = 3; }
+message StreamRequest { string filter = 1; int32 limit = 2; }
+message BatchResult   { int32 inserted = 1; repeated string failed_ids = 2; }
+message Message       { string sender = 1; string content = 2; }
+"""</span>
+
+<span class="cm"># ─── gRPC Server ──────────────────────────────────────────────────────────────</span>
+<span class="cm"># pip install grpcio grpcio-tools grpcio-status</span>
+
+<span class="kw">import</span> grpc
+<span class="kw">from</span> concurrent <span class="kw">import</span> futures
+<span class="kw">import</span> time
+
+<span class="cm"># Assume generated stubs exist as service_pb2 and service_pb2_grpc</span>
+
+<span class="kw">class</span> <span class="dec">DataServicer</span>:  <span class="cm"># inherits from service_pb2_grpc.DataServiceServicer</span>
+
+    <span class="kw">def</span> <span class="fn">GetItem</span>(self, request, context):
+        <span class="cm"># context provides: metadata, peer, deadline, cancellation</span>
+        <span class="kw">if</span> context.time_remaining() < <span class="num">0.1</span>:
+            context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, <span class="st">"Deadline too tight"</span>)
+
+        item_id = request.id
+        <span class="kw">try</span>:
+            data = <span class="fn">fetch_from_db</span>(item_id)
+            <span class="kw">return</span> ItemResponse(id=item_id, data=data, timestamp=int(time.time()))
+        <span class="kw">except</span> NotFoundError:
+            context.abort(grpc.StatusCode.NOT_FOUND, f<span class="st">"Item {item_id} not found"</span>)
+
+    <span class="kw">def</span> <span class="fn">StreamItems</span>(self, request, context):
+        <span class="st">"""Generator: each yield sends one response frame to the client."""</span>
+        cursor = <span class="fn">db_query</span>(request.filter, limit=request.limit)
+        <span class="kw">for</span> row <span class="kw">in</span> cursor:
+            <span class="kw">if</span> context.is_active() <span class="kw">is False</span>:  <span class="cm"># client cancelled</span>
+                <span class="kw">return</span>
+            <span class="kw">yield</span> ItemResponse(id=row.id, data=row.data, timestamp=row.ts)
+
+    <span class="kw">def</span> <span class="fn">BatchInsert</span>(self, request_iterator, context):
+        <span class="st">"""Consumes client stream, returns single response."""</span>
+        inserted, failed = <span class="num">0</span>, []
+        <span class="kw">for</span> req <span class="kw">in</span> request_iterator:
+            <span class="kw">try</span>:
+                <span class="fn">db_insert</span>(req.id)
+                inserted += <span class="num">1</span>
+            <span class="kw">except</span> Exception:
+                failed.append(req.id)
+        <span class="kw">return</span> BatchResult(inserted=inserted, failed_ids=failed)
+
+<span class="kw">def</span> <span class="fn">serve</span>():
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=<span class="num">64</span>),
+        <span class="cm"># Interceptors for auth, logging, metrics — the gRPC equivalent of HTTP middleware</span>
+        interceptors=[<span class="fn">AuthInterceptor</span>(), <span class="fn">MetricsInterceptor</span>()],
+        options=[
+            (<span class="st">'grpc.max_receive_message_length'</span>, <span class="num">64</span> * <span class="num">1024</span> * <span class="num">1024</span>),  <span class="cm"># 64MB</span>
+            (<span class="st">'grpc.keepalive_time_ms'</span>, <span class="num">30000</span>),    <span class="cm"># send ping every 30s</span>
+            (<span class="st">'grpc.keepalive_timeout_ms'</span>, <span class="num">5000</span>),  <span class="cm"># expect pong within 5s</span>
+            (<span class="st">'grpc.max_connection_age_ms'</span>, <span class="num">300000</span>), <span class="cm"># force reconnect after 5min</span>
+        ]
+    )
+    <span class="cm"># add_DataServiceServicer_to_server(DataServicer(), server)</span>
+    server.add_insecure_port(<span class="st">'[::]:50051'</span>)
+    server.start()
+    server.wait_for_termination()
+
+<span class="cm"># ─── gRPC Client with retry policy ───────────────────────────────────────────</span>
+<span class="kw">def</span> <span class="fn">create_channel</span>(target: str) -> grpc.Channel:
+    <span class="cm"># Service config defines retry policy — applied client-side automatically</span>
+    service_config = {
+        <span class="st">"methodConfig"</span>: [{
+            <span class="st">"name"</span>: [{<span class="st">"service"</span>: <span class="st">"DataService"</span>}],
+            <span class="st">"retryPolicy"</span>: {
+                <span class="st">"maxAttempts"</span>: <span class="num">4</span>,
+                <span class="st">"initialBackoff"</span>: <span class="st">"0.5s"</span>,
+                <span class="st">"maxBackoff"</span>: <span class="st">"10s"</span>,
+                <span class="st">"backoffMultiplier"</span>: <span class="num">2</span>,
+                <span class="cm"># Only retry on these status codes — not INVALID_ARGUMENT (client bug)</span>
+                <span class="st">"retryableStatusCodes"</span>: [<span class="st">"UNAVAILABLE"</span>, <span class="st">"RESOURCE_EXHAUSTED"</span>]
+            },
+            <span class="st">"timeout"</span>: <span class="st">"5s"</span>,  <span class="cm"># deadline propagated to server via context</span>
+        }]
+    }
+    <span class="kw">import</span> json
+    <span class="kw">return</span> grpc.secure_channel(
+        target,
+        grpc.ssl_channel_credentials(),
+        options=[(<span class="st">'grpc.service_config'</span>, json.dumps(service_config))]
+    )
+</code></pre>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">When would you choose gRPC over REST for an internal service, and when would you not?</div>
+      <div class="a">Choose gRPC when: (1) multiple language services need to interoperate with strong typing guarantees; (2) you need bidirectional streaming (e.g., real-time data pipelines, event sourcing, collaborative apps); (3) performance at the margin matters — Protobuf's binary encoding and HTTP/2 multiplexing measurably help under high RPS; (4) you want client SDK generation to be automatic and versioned. Avoid gRPC when: (1) browser clients are consumers — use REST or GraphQL; (2) the team is small and the overhead of .proto files + codegen adds more friction than value; (3) you need human-readable payloads for debugging/auditing; (4) your infrastructure doesn't support HTTP/2 end-to-end — many AWS services and API gateways don't support gRPC natively.</div>
+    </div>
+    <div class="qa">
+      <div class="q">How does gRPC handle load balancing differently from REST?</div>
+      <div class="a">REST over HTTP/1.1 is request-level — each request can go to a different backend, and L7 load balancers handle this trivially. gRPC over HTTP/2 maintains long-lived connections with many streams. If you put a TCP load balancer in front (L4), all streams on a connection go to the same backend — you lose load balancing. You need L7 load balancing that understands HTTP/2 frames (Envoy, nginx, Linkerd). Alternatively, client-side load balancing (etcd/Consul service discovery, the client picks a backend per RPC) eliminates the load balancer entirely, which is what gRPC's built-in client-side LB supports. <code>grpc.max_connection_age_ms</code> forces connection recycling, spreading load when new connections form.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     8. COMPARISON TABLE
+════════════════════════════════════════════ -->
+<section class="section" id="comparison">
+  <div class="section-header">
+    <span class="section-num">08</span>
+    <h2>Decision Matrix</h2>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Protocol</th>
+          <th>Direction</th>
+          <th>Overhead</th>
+          <th>Latency</th>
+          <th>Browser Native</th>
+          <th>Proxy Friendly</th>
+          <th>Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>HTTP/1.1</td>
+          <td>Client → Server</td>
+          <td class="tag-bad">High (text headers)</td>
+          <td class="tag-mid">Medium (HOL blocking)</td>
+          <td class="tag-good">✓ Native</td>
+          <td class="tag-good">✓ Universal</td>
+          <td>Standard APIs, simple services</td>
+        </tr>
+        <tr>
+          <td>HTTP/2</td>
+          <td>Client ↔ Server</td>
+          <td class="tag-good">Low (binary+HPACK)</td>
+          <td class="tag-good">Low (multiplexed)</td>
+          <td class="tag-good">✓ Native</td>
+          <td class="tag-good">✓ Universal</td>
+          <td>API gateways, CDN, many concurrent reqs</td>
+        </tr>
+        <tr>
+          <td>HTTP/3</td>
+          <td>Client ↔ Server</td>
+          <td class="tag-good">Low (QPACK)</td>
+          <td class="tag-good">Lowest (0-RTT, no HoL)</td>
+          <td class="tag-good">✓ Native</td>
+          <td class="tag-mid">⚠ UDP may be blocked</td>
+          <td>Mobile clients, lossy networks</td>
+        </tr>
+        <tr>
+          <td>WebSocket</td>
+          <td>Full-Duplex</td>
+          <td class="tag-good">Very Low (2-10B frames)</td>
+          <td class="tag-good">Low</td>
+          <td class="tag-good">✓ Native EventSource</td>
+          <td class="tag-mid">⚠ Needs WS-aware proxy</td>
+          <td>Chat, gaming, collaborative apps</td>
+        </tr>
+        <tr>
+          <td>SSE</td>
+          <td>Server → Client</td>
+          <td class="tag-mid">Low (text frames)</td>
+          <td class="tag-good">Low</td>
+          <td class="tag-good">✓ Native EventSource</td>
+          <td class="tag-good">✓ Plain HTTP</td>
+          <td>Notifications, live dashboards, LLM streaming</td>
+        </tr>
+        <tr>
+          <td>gRPC</td>
+          <td>Full-Duplex streams</td>
+          <td class="tag-good">Lowest (Protobuf)</td>
+          <td class="tag-good">Low</td>
+          <td class="tag-bad">✗ Needs gRPC-Web proxy</td>
+          <td class="tag-mid">⚠ HTTP/2 required E2E</td>
+          <td>Internal microservices, streaming pipelines</td>
+        </tr>
+        <tr>
+          <td>Long Polling</td>
+          <td>Server → Client</td>
+          <td class="tag-bad">Very High</td>
+          <td class="tag-mid">Medium</td>
+          <td class="tag-good">✓ Native XHR</td>
+          <td class="tag-good">✓ Plain HTTP</td>
+          <td>Last resort; use SSE instead</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Protocol Selection Decision Tree</h3>
+  <div class="diagram">
+    <pre><code>Need real-time data flow?
+  └── No  → Standard HTTP/1.1 or HTTP/2 REST
+  └── Yes → Client needs to SEND data at high frequency or low latency?
+              └── No (server push only)
+                  └── Browser client? → SSE (EventSource API, plain HTTP, auto-reconnect)
+                  └── Internal services? → gRPC server-streaming
+              └── Yes (bidirectional)
+                  └── Browser client? → WebSocket
+                  └── Internal services? → gRPC bidirectional streaming
+                  └── Real-time gaming/trading (microseconds matter)? → WebSocket + custom framing
+
+Client type?
+  └── Browser → REST, SSE, WebSocket (all native)
+  └── Internal service → gRPC (strong typing, performance)
+  └── Mobile (lossy network) → HTTP/3 where available, fallback to HTTP/2
+  └── IoT / embedded → MQTT over TCP, or WebSocket
+
+At what scale does each break?
+  └── HTTP/1.1: breaks at many concurrent connections per client (6 conn limit)
+  └── HTTP/2: breaks when TCP loss affects all streams (solved by HTTP/3)
+  └── WebSocket: breaks when you don't externalize state (use Redis Pub/Sub)
+  └── SSE: breaks when Nginx buffers responses (fix: X-Accel-Buffering: no)
+  └── gRPC: breaks with L4 load balancers (fix: L7 LB or client-side LB)</code></pre>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     9. RELIABILITY PATTERNS
+════════════════════════════════════════════ -->
+<section class="section" id="reliability">
+  <div class="section-header">
+    <span class="section-num">09</span>
+    <h2>Reliability Patterns</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>Reliability at the protocol level means understanding exactly what guarantees each layer provides, and what gaps your application must fill. TCP gives you ordered, reliable byte delivery — but not message boundaries, not application-level acknowledgment, and not protection against process crashes. If your process dies after receiving bytes but before processing them, TCP's guarantee is worthless. You need application-level acknowledgments and idempotency.</p>
+    <p>The three axes of reliability: <em>durability</em> (data survives failures), <em>availability</em> (system responds despite partial failures), and <em>consistency</em> (responses reflect the true state). These trade off — pick which ones matter for each operation, and be explicit about the others.</p>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">reliability_patterns.py — Idempotency, at-least-once, exactly-once</span><span class="code-lang">Python</span></div>
+<code><span class="kw">import</span> hashlib
+<span class="kw">import</span> redis
+<span class="kw">import</span> uuid
+<span class="kw">import</span> json
+<span class="kw">from</span> fastapi <span class="kw">import</span> FastAPI, HTTPException, Header
+<span class="kw">from</span> typing <span class="kw">import</span> Optional
+
+app = FastAPI()
+r = redis.Redis()
+
+<span class="cm"># ─── Idempotency Keys ────────────────────────────────────────────────────────
+# Problem: client retries a POST (charge $100), server receives it twice.
+# Solution: client generates a UUID for each logical operation.
+#   Server stores result keyed by idempotency key.
+#   On retry, server returns the STORED result — never executes twice.
+#
+# This is exactly how Stripe's API works.</span>
+
+@app.post(<span class="st">"/payments"</span>)
+<span class="kw">async def</span> <span class="fn">create_payment</span>(
+    body: dict,
+    idempotency_key: Optional[str] = Header(<span class="kw">None</span>)
+):
+    <span class="kw">if not</span> idempotency_key:
+        idempotency_key = str(uuid.uuid4())
+
+    cache_key = f<span class="st">"idem:{idempotency_key}"</span>
+
+    <span class="cm"># Check if we've already processed this key</span>
+    cached = r.get(cache_key)
+    <span class="kw">if</span> cached:
+        <span class="kw">return</span> json.loads(cached)  <span class="cm"># return exact same response as first call</span>
+
+    <span class="cm"># Process (this may take time and resources)</span>
+    result = <span class="fn">process_payment</span>(body)
+
+    <span class="cm"># Store result with TTL (24h is common — covers retry windows)</span>
+    r.setex(cache_key, <span class="num">86400</span>, json.dumps(result))
+    <span class="kw">return</span> result
+
+<span class="cm"># ─── Outbox Pattern (guaranteed at-least-once delivery) ──────────────────────
+# Problem: "update DB and publish event" — if the process crashes between the two,
+#   either the DB is updated but no event published (silent failure)
+#   or event published but DB rolled back (phantom event).
+# Solution: Write the event to the DB in the SAME transaction. A separate process
+#   reads the outbox and publishes. This guarantees delivery survives crashes.</span>
+
+<span class="kw">import</span> psycopg2
+
+<span class="kw">def</span> <span class="fn">update_order_with_outbox</span>(conn, order_id: str, status: str):
+    <span class="st">"""Atomic: update order AND enqueue event in same DB transaction."""</span>
+    <span class="kw">with</span> conn.cursor() <span class="kw">as</span> cur:
+        <span class="cm"># Update the entity</span>
+        cur.execute(
+            <span class="st">"UPDATE orders SET status=%s WHERE id=%s"</span>,
+            (status, order_id)
+        )
+        <span class="cm"># Write to outbox — same transaction, same ACID guarantee</span>
+        cur.execute(
+            <span class="st">"""INSERT INTO outbox (id, aggregate_id, event_type, payload, created_at)
+               VALUES (%s, %s, %s, %s, NOW())"""</span>,
+            (str(uuid.uuid4()), order_id, <span class="st">"ORDER_STATUS_CHANGED"</span>,
+             json.dumps({<span class="st">"order_id"</span>: order_id, <span class="st">"status"</span>: status}))
+        )
+    conn.commit()
+    <span class="cm"># Separate outbox poller reads this row and publishes to Kafka/RabbitMQ</span>
+
+<span class="cm"># ─── Dead Letter Queue pattern ────────────────────────────────────────────────
+# Messages that fail N times go to DLQ for manual inspection/replay.
+# Prevents poison pill messages from blocking the main queue forever.</span>
+
+<span class="kw">import</span> asyncio
+
+<span class="kw">async def</span> <span class="fn">process_with_dlq</span>(message, max_attempts=<span class="num">3</span>):
+    <span class="kw">for</span> attempt <span class="kw">in</span> range(max_attempts):
+        <span class="kw">try</span>:
+            <span class="kw">await</span> <span class="fn">handle_message</span>(message)
+            <span class="kw">await</span> <span class="fn">ack_message</span>(message)
+            <span class="kw">return</span>
+        <span class="kw">except</span> Exception <span class="kw">as</span> e:
+            <span class="kw">if</span> attempt == max_attempts - <span class="num">1</span>:
+                <span class="cm"># Final attempt failed — send to DLQ with context</span>
+                <span class="kw">await</span> <span class="fn">publish_to_dlq</span>({
+                    <span class="st">"original"</span>: message,
+                    <span class="st">"error"</span>: str(e),
+                    <span class="st">"attempts"</span>: max_attempts,
+                    <span class="st">"failed_at"</span>: <span class="fn">time_now</span>(),
+                })
+            <span class="kw">await</span> asyncio.sleep(<span class="num">2</span> ** attempt)
+</code></pre>
+
+  <div class="callout success">
+    <strong>The Reliability Checklist</strong>
+    For any network operation: (1) Is it idempotent? If not, add idempotency keys. (2) What happens on timeout — did the server receive the request or not? Add correlation IDs and status-check endpoints. (3) What's the retry strategy — exponential backoff + jitter, bounded retry count, circuit breaker. (4) Where is state stored — can you reconstruct it after a crash? (5) Is there a DLQ for unprocessable messages? (6) What's the monitoring story — how do you know it's failing?
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Explain exactly-once delivery semantics. Is it achievable?</div>
+      <div class="a">True exactly-once across independent systems is impossible (see the Two Generals Problem). What we can achieve is <em>exactly-once processing</em> with idempotent consumers: deliver at-least-once, deduplicate at the consumer. Kafka's "exactly-once semantics" (since 0.11) achieves this within the Kafka cluster using producer idempotence and transactional APIs — the producer is assigned a PID, sequence numbers detect duplicates, transactions span multiple partitions atomically. But across system boundaries (Kafka → your DB → external API), you still need idempotency at each hop. The honest answer: "exactly-once" in marketing usually means "at-least-once with idempotent consumers."</div>
+    </div>
+    <div class="qa">
+      <div class="q">What's the difference between the Outbox pattern and dual-writes? Why does it matter?</div>
+      <div class="a">Dual-write: write to DB, then write to message queue — two separate operations, no atomicity. If the process crashes between them, you have DB updated but no event (or vice versa). Outbox: write to DB and outbox table in a single transaction, guaranteed atomic. A separate poller reads the outbox and publishes. This provides at-least-once delivery with a single source of truth (the DB). The failure mode is well-defined: the poller might publish the same event twice (if it crashes after publishing but before marking as sent), so consumers must be idempotent. Change Data Capture (Debezium) is an alternative that reads the DB write-ahead log instead of an outbox table.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     10. SCALABILITY PATTERNS
+════════════════════════════════════════════ -->
+<section class="section" id="scalability">
+  <div class="section-header">
+    <span class="section-num">10</span>
+    <h2>Scalability Patterns</h2>
+  </div>
+
+  <div class="lecture">
+    <div class="lecture-label">Professor's Lecture</div>
+    <p>Scalability is the ability to handle more load by adding resources, and the enemy of scalability is state. Stateless services scale trivially — add a server, route traffic to it, done. Stateful services (WebSocket connections, sessions, caches) require coordination: which server holds which state, how do you redistribute it when a server leaves, how do you avoid a single point of contention?</p>
+    <p>The key insight for protocol scalability: <em>vertical protocols</em> (one long-lived connection handles many operations) require careful state externalization. <em>Horizontal protocols</em> (one connection, one operation, then close) are stateless by nature. HTTP/1.1 REST leans horizontal. WebSocket leans vertical. gRPC is in between — long-lived connection, but state is minimal if you use the right patterns.</p>
+  </div>
+
+<pre>
+<div class="code-header"><span class="code-title">scalability_patterns.py — Connection pooling, backpressure, rate limiting</span><span class="code-lang">Python</span></div>
+<code><span class="kw">import</span> asyncio
+<span class="kw">import</span> aiohttp
+<span class="kw">import</span> time
+<span class="kw">from</span> collections <span class="kw">import</span> deque
+
+<span class="cm"># ─── Token Bucket Rate Limiter ────────────────────────────────────────────────
+# Controls the rate of outbound requests or inbound processing.
+# Token bucket allows bursts up to `capacity`, sustained rate of `rate/s`.</span>
+
+<span class="kw">class</span> <span class="dec">TokenBucket</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, capacity: int, rate: float):
+        self.capacity = capacity    <span class="cm"># max burst</span>
+        self.rate = rate            <span class="cm"># tokens per second</span>
+        self.tokens = capacity
+        self.last = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    <span class="kw">async def</span> <span class="fn">acquire</span>(self, tokens=<span class="num">1</span>) -> float:
+        <span class="st">"""Returns wait time in seconds. 0 means immediately available."""</span>
+        <span class="kw">async with</span> self._lock:
+            now = time.monotonic()
+            elapsed = now - self.last
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+            self.last = now
+
+            <span class="kw">if</span> self.tokens >= tokens:
+                self.tokens -= tokens
+                <span class="kw">return</span> <span class="num">0.0</span>
+            <span class="kw">else</span>:
+                wait = (tokens - self.tokens) / self.rate
+                <span class="kw">return</span> wait
+
+<span class="cm"># ─── Adaptive Concurrency Limiter ────────────────────────────────────────────
+# Inspired by Netflix's adaptive concurrency limiting (TCP Vegas algorithm).
+# Adjusts inflight request limit based on observed latency.
+# Prevents overloading downstream services that can't reject fast enough.</span>
+
+<span class="kw">class</span> <span class="dec">AdaptiveConcurrencyLimiter</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, initial_limit=<span class="num">10</span>, min_limit=<span class="num">1</span>, max_limit=<span class="num">200</span>):
+        self.limit = initial_limit
+        self.min_limit = min_limit
+        self.max_limit = max_limit
+        self.inflight = <span class="num">0</span>
+        self.min_latency = float(<span class="st">'inf'</span>)  <span class="cm"># RTT with no queuing</span>
+        self._lock = asyncio.Lock()
+
+    <span class="kw">async def</span> <span class="fn">__aenter__</span>(self):
+        <span class="kw">async with</span> self._lock:
+            <span class="kw">while</span> self.inflight >= self.limit:
+                <span class="kw">await</span> asyncio.sleep(<span class="num">0.01</span>)
+            self.inflight += <span class="num">1</span>
+        self._start = time.monotonic()
+        <span class="kw">return</span> self
+
+    <span class="kw">async def</span> <span class="fn">__aexit__</span>(self, exc_type, *_):
+        latency = time.monotonic() - self._start
+        self.min_latency = min(self.min_latency, latency)
+        gradient = <span class="num">1</span> - (self.min_latency / latency) <span class="kw">if</span> latency > <span class="num">0</span> <span class="kw">else</span> <span class="num">0</span>
+
+        <span class="kw">async with</span> self._lock:
+            self.inflight -= <span class="num">1</span>
+            <span class="kw">if not</span> exc_type <span class="kw">and</span> gradient > <span class="num">0.25</span>:  <span class="cm"># latency growing: reduce limit</span>
+                self.limit = max(self.min_limit, int(self.limit * <span class="num">0.9</span>))
+            <span class="kw">elif not</span> exc_type:                        <span class="cm"># healthy: increase limit</span>
+                self.limit = min(self.max_limit, self.limit + <span class="num">1</span>)
+
+<span class="cm"># ─── Consistent Hashing for stateful connection routing ──────────────────────
+# Used by WebSocket gateways, cache servers (memcached, Redis Cluster).
+# Ensures the same key routes to the same node with minimal remapping on resize.</span>
+
+<span class="kw">import</span> bisect
+
+<span class="kw">class</span> <span class="dec">ConsistentHashRing</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, nodes: list[str], replicas=<span class="num">150</span>):
+        <span class="st">"""
+        replicas: virtual nodes per physical node.
+        More replicas = better distribution, more memory.
+        150 is a common production value.
+        """</span>
+        self._ring: dict[int, str] = {}
+        self._sorted_keys: list[int] = []
+        <span class="kw">for</span> node <span class="kw">in</span> nodes:
+            self.add_node(node, replicas)
+
+    <span class="kw">def</span> <span class="fn">_hash</span>(self, key: str) -> int:
+        <span class="kw">return</span> int(hashlib.md5(key.encode()).hexdigest(), <span class="num">16</span>)
+
+    <span class="kw">def</span> <span class="fn">add_node</span>(self, node: str, replicas=<span class="num">150</span>):
+        <span class="kw">for</span> i <span class="kw">in</span> range(replicas):
+            h = self._hash(f<span class="st">"{node}:{i}"</span>)
+            self._ring[h] = node
+            bisect.insort(self._sorted_keys, h)
+
+    <span class="kw">def</span> <span class="fn">remove_node</span>(self, node: str, replicas=<span class="num">150</span>):
+        <span class="kw">for</span> i <span class="kw">in</span> range(replicas):
+            h = self._hash(f<span class="st">"{node}:{i}"</span>)
+            del self._ring[h]
+            self._sorted_keys.remove(h)
+
+    <span class="kw">def</span> <span class="fn">get_node</span>(self, key: str) -> str:
+        <span class="st">"""Route key to node. Same key always goes to same node."""</span>
+        <span class="kw">if not</span> self._ring: <span class="kw">raise</span> ValueError(<span class="st">"Ring is empty"</span>)
+        h = self._hash(key)
+        idx = bisect.bisect(self._sorted_keys, h) % len(self._sorted_keys)
+        <span class="kw">return</span> self._ring[self._sorted_keys[idx]]
+
+<span class="cm"># Usage: route WebSocket connection by user_id to the correct gateway server
+ring = ConsistentHashRing([<span class="st">"ws-server-1"</span>, <span class="st">"ws-server-2"</span>, <span class="st">"ws-server-3"</span>])
+target_server = ring.get_node(user_id)  <span class="cm"># deterministic, sticky routing</span>
+<span class="cm"># When ws-server-2 is removed, only ~1/3 of keys remap (not all)</span>
+</code></pre>
+
+  <h3>The C10K → C10M Journey</h3>
+  <div class="diagram">
+    <pre><code>C10K (10,000 connections) — solved by async I/O
+  Problem: thread-per-connection model → 10k threads × 1MB stack = 10GB RAM
+  Solution: event loop (epoll/kqueue) → single thread handles all I/O
+  Python: asyncio, Node.js, Nginx (event-driven)
+
+C100K — solved by tuning
+  net.core.somaxconn = 65535         # accept() backlog
+  net.ipv4.tcp_max_syn_backlog = 65535
+  fs.file-max = 2097152              # system-wide file descriptor limit
+  ulimit -n 1048576                  # per-process limit
+  net.ipv4.ip_local_port_range = 1024 65535
+
+C1M — solved by architecture
+  Problem: single server can't hold 1M connections (memory, CPU, FDs)
+  Solution: WebSocket/SSE gateway tier (dumb fanout) + stateless app tier
+  ┌──────────────┐    Redis    ┌───────────────────┐
+  │  WS Gateway  │◄──Pub/Sub──│   App Servers (N)  │
+  │  (10 servers)│            │   (stateless)       │
+  │  100k conns  │            └───────────────────────┘
+  │  each        │
+  └──────────────┘
+  Total: 10 × 100k = 1M connections
+
+C10M — solved by kernel bypass
+  DPDK (Data Plane Development Kit) — bypass kernel entirely
+  AF_XDP sockets — eBPF-based packet processing in user space
+  Used by: high-frequency trading, 5G packet cores, DDoS scrubbing
+  (This is where you're rewriting the network stack, not just tuning it)</code></pre>
+  </div>
+
+  <div class="interview">
+    <div class="interview-label">Deep-Dive Questions</div>
+    <div class="qa">
+      <div class="q">Design a system to deliver real-time notifications to 50 million users. Walk me through your protocol choices and scaling strategy.</div>
+      <div class="a">Tier 1 — Connection Layer: SSE over HTTP/2 (not WebSocket — notifications are unidirectional, SSE is simpler and proxies handle it natively). Each server holds ~50k connections; need ~1000 servers. Consistent hashing routes each user_id to a deterministic server. Tier 2 — Fanout Layer: When an event is generated, look up which servers hold connections for the target users. At 50M users this lookup must be fast — Redis hash of user_id → server_id. Publish to the specific server's Redis channel. For broadcast events (everyone gets it), use a Kafka topic partitioned by server_id — each server consumes its partition. Tier 3 — Backpressure: Slow consumers get their SSE queue dropped when full. The client's EventSource reconnects, catches up via Last-Event-ID, and misses any events outside the buffer window. For guaranteed delivery, persist events in Cassandra (time-series, user-partitioned) and replay on reconnect. The key architecture decision: separate the connection-holding tier from the business logic tier. The connection servers are dumb pipes; app servers are stateless.</div>
+    </div>
+    <div class="qa">
+      <div class="q">What is the thundering herd problem in the context of connection scaling, and how do you mitigate it?</div>
+      <div class="a">Thundering herd: a large number of clients simultaneously try to reconnect after a server restart or network partition. Example: 100k WebSocket connections drop when a server restarts. All 100k try to reconnect simultaneously, overwhelming the server (or all its peers). Mitigations: (1) <em>Randomized reconnect delay</em> — clients wait random(0, base_delay * 2^attempt) before reconnecting, spreading the load across seconds. (2) <em>Rolling restarts</em> — restart one server at a time with health check gates, limiting the number of simultaneous disconnections. (3) <em>Connection admission control</em> — rate limit new connections at the load balancer (e.g., Nginx's limit_conn directive). (4) <em>Sticky session groups</em> — when one server is down, its clients are gradually redistributed rather than all hitting one new server. This is why microservice resilience patterns like jitter exist: they're all solving variations of the same thundering herd problem.</div>
+    </div>
+    <div class="qa">
+      <div class="q">How does backpressure propagate through an async system, and what happens when it doesn't?</div>
+      <div class="a">Backpressure is a signal from consumer to producer saying "slow down." In async systems it propagates through: (1) bounded queues — when a queue is full, the producer blocks or drops; (2) HTTP/2 flow control — the receiver sets a window; the sender blocks when it's exhausted; (3) TCP's receive window — the kernel blocks send() when the receiver's buffer is full. When backpressure breaks down: producers write faster than consumers can read. Unbounded queues grow until OOM. Memory exhaustion causes the entire process to crash. Classic pattern in stream processing — the ingestion pipeline absorbs a spike while the processing stage is at capacity, the queue grows, OOM kills the process, all buffered data is lost. Solutions: bounded queues with explicit drop policies (drop-head, drop-tail, random), reactive streams protocols (Project Reactor, RxJava have backpressure operators built in), or external queues (Kafka) where the "queue" is disk, not RAM.</div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<footer>
+  Network Protocols Study Guide · Systems Deep Dive Series · Python Examples · 2025
+</footer>
+
+</div>
+</body>
+</html>
