@@ -14,8 +14,11 @@ Place the new `.html` file in the project root. Follow the visual style establis
 - Hand-applied syntax highlighting in code blocks using spans: `.code-keyword`, `.code-fn`, `.code-comment`, `.code-string`, `.code-number`, `.code-highlight`
 - A "← Back" link in the header area pointing to `index.html`
 - Footer with a one-line description of the post topic
+### 2. Validate dates in the HTML file
 
-### 2. Categorize the post
+Before indexing, grep the file for any year or date references (e.g. `2025`, `January 2026`) and verify each matches today's date. Update any stale ones. This step applies whether Claude created the file or the user did.
+
+### 3. Categorize the post
 
 Assign the post to one of these categories based on its primary topic:
 
@@ -27,14 +30,14 @@ Assign the post to one of these categories based on its primary topic:
 
 If the post genuinely doesn't fit any of these, introduce a new category with a short, clear name. Do this sparingly.
 
-### 3. Update `index.html`
+### 4. Update `index.html`
 
 - Add a post card for the new post under the correct `<section class="category">` block.
 - If the category doesn't exist yet, create a new section (see layout rules below).
 - Each post card must include: title, excerpt (1–2 sentences), at least one tag, and the publication date.
 - Within each category, sort posts newest first.
 
-### 4. Update the header description in `index.html`
+### 5. Update the header description in `index.html`
 
 The `<header>` of `index.html` contains a short description line:
 
