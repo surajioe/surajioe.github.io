@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python Internals: LRU Cache, TTL Store & Backpressure Pipelines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: #1e1e2e;
+    --accent: #e8c547;
+    --accent2: #4fc4cf;
+    --accent3: #e05c5c;
+    --text: #d4d4e8;
+    --text-dim: #7070a0;
+    --text-bright: #f0f0ff;
+    --code-bg: #0d0d14;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    line-height: 1.8;
+    font-size: 17px;
+    overflow-x: hidden;
+  }
+
+  /* ── BACK LINK ── */
+  .back-link {
+    position: absolute;
+    top: 28px;
+    left: 6vw;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    text-decoration: none;
+    border: none;
+    z-index: 10;
+    transition: color 0.15s;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 6vw;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.4;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black, transparent);
+  }
+
+  .header-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,197,71,0.08) 0%, transparent 70%);
+    top: -100px;
+    right: -100px;
+    pointer-events: none;
+  }
+
+  .header-glow2 {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(79,196,207,0.06) 0%, transparent 70%);
+    bottom: 0;
+    left: 10%;
+    pointer-events: none;
+  }
+
+  .tag {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(232,197,71,0.3);
+    padding: 5px 14px;
+    border-radius: 2px;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(38px, 6vw, 72px);
+    font-weight: 900;
+    line-height: 1.05;
+    color: var(--text-bright);
+    max-width: 800px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 28px;
+  }
+
+  h1 em { color: var(--accent); font-style: italic; }
+
+  .subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 580px;
+    position: relative;
+    z-index: 1;
+    line-height: 1.7;
+  }
+
+  .meta {
+    display: flex;
+    gap: 32px;
+    margin-top: 48px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .meta-item {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .meta-item span {
+    display: block;
+    color: var(--text);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  .result-banner {
+    position: relative;
+    z-index: 1;
+    margin-top: 56px;
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  .result-item {
+    padding: 14px 24px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .result-item:last-child { border-right: none; }
+
+  .result-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .result-value {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .result-item.yellow .result-value { color: var(--accent); }
+  .result-item.blue .result-value   { color: var(--accent2); }
+  .result-item.red .result-value    { color: var(--accent3); }
+
+  /* ── LAYOUT ── */
+  .container {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 6vw;
+  }
+
+  article { padding: 80px 0 120px; }
+
+  /* ── CHAPTERS ── */
+  .chapter { margin-bottom: 80px; }
+
+  .chapter-number {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chapter-number::after {
+    content: '';
+    height: 1px;
+    width: 40px;
+    background: var(--accent);
+    opacity: 0.4;
+    display: inline-block;
+  }
+
+  h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(26px, 3.5vw, 38px);
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.2;
+    margin-bottom: 28px;
+  }
+
+  h2 em { color: var(--accent2); font-style: italic; }
+
+  h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin: 40px 0 16px;
+  }
+
+  p { margin-bottom: 20px; color: var(--text); }
+
+  strong { color: var(--text-bright); font-weight: 500; }
+
+  a { color: var(--accent2); text-decoration: none; border-bottom: 1px solid rgba(79,196,207,0.3); }
+
+  ul, ol { margin: 0 0 20px 24px; color: var(--text); }
+  li { margin-bottom: 8px; }
+
+  /* ── CODE ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 28px 32px;
+    overflow-x: auto;
+    margin: 32px 0;
+  }
+
+  pre.accent2 { border-left-color: var(--accent2); }
+  pre.accent3 { border-left-color: var(--accent3); }
+
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #c9d1d9;
+  }
+
+  p code, li code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 13px;
+    color: var(--accent2);
+  }
+
+  .code-comment   { color: #484870; }
+  .code-keyword   { color: #e8c547; }
+  .code-string    { color: #7ec899; }
+  .code-number    { color: #4fc4cf; }
+  .code-fn        { color: #d2a8ff; }
+  .code-highlight { color: #f0f0ff; font-weight: 500; }
+  .code-type      { color: #e8c547; font-style: italic; }
+
+  /* ── CALLOUTS ── */
+  .callout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin: 36px 0;
+    position: relative;
+  }
+
+  .callout::before {
+    content: attr(data-label);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    position: absolute;
+    top: -1px; left: 20px;
+    background: var(--bg);
+    padding: 0 8px;
+    transform: translateY(-50%);
+  }
+
+  .callout.warn    { border-color: rgba(224,92,92,0.4); }
+  .callout.warn::before   { color: var(--accent3); }
+  .callout.info    { border-color: rgba(79,196,207,0.3); }
+  .callout.info::before   { color: var(--accent2); }
+  .callout.insight { border-color: rgba(232,197,71,0.3); }
+  .callout.insight::before { color: var(--accent); }
+
+  /* ── TABLE ── */
+  .comparison {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 32px 0;
+    font-size: 14px;
+  }
+
+  .comparison th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .comparison td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(30,30,46,0.6);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+
+  .comparison tr:last-child td { border-bottom: none; }
+  .comparison tr:hover td { background: var(--surface); }
+
+  .comparison td:first-child {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    white-space: nowrap;
+  }
+
+  /* ── ARCH DIAGRAM ── */
+  .arch-diagram {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    margin: 32px 0;
+    overflow-x: auto;
+  }
+
+  .arch-diagram pre {
+    border: none; padding: 0; margin: 0; background: transparent;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 64px 0;
+  }
+
+  /* ── PULL QUOTE ── */
+  blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 4px 28px;
+    margin: 40px 0;
+  }
+
+  blockquote p {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-style: italic;
+    color: var(--text-bright);
+    line-height: 1.5;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 48px 6vw;
+    text-align: center;
+  }
+
+  footer p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  header > * { animation: fadeUp 0.7s ease forwards; }
+  header .tag           { animation-delay: 0.1s; opacity: 0; }
+  header h1             { animation-delay: 0.2s; opacity: 0; }
+  header .subtitle      { animation-delay: 0.3s; opacity: 0; }
+  header .meta          { animation-delay: 0.4s; opacity: 0; }
+  header .result-banner { animation-delay: 0.5s; opacity: 0; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back-link" href="index.html">← Back</a>
+  <div class="header-grid"></div>
+  <div class="header-glow"></div>
+  <div class="header-glow2"></div>
+  <div class="tag">Deep Dive · Python Internals</div>
+  <h1>LRU Cache, TTL Store<br>&amp; <em>Backpressure</em> Pipelines</h1>
+  <p class="subtitle">A Storage Protocol as connective tissue. An LRU Cache that satisfies it. A TTL Store with heap-based lazy deletion on top. A typed generator pipeline threading them into a system.</p>
+  <div class="meta">
+    <div class="meta-item">Topic<span>Protocols · Generics · Generators</span></div>
+    <div class="meta-item">Level<span>Intermediate → Advanced</span></div>
+    <div class="meta-item">Date<span>May 2026</span></div>
+  </div>
+  <div class="result-banner">
+    <div class="result-item yellow"><span class="result-label">LRU get / put</span><span class="result-value">O(1)</span></div>
+    <div class="result-item blue"><span class="result-label">TTL put</span><span class="result-value">O(log N)</span></div>
+    <div class="result-item blue"><span class="result-label">Pipeline types</span><span class="result-value">Generator[U, bool, None]</span></div>
+  </div>
+</header>
+
+<article>
+<div class="container">
+
+  <!-- CHAPTER 1 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 01</div>
+    <h2>The Storage Protocol — <em>Connective Tissue</em></h2>
+
+    <p>The three structures in this post — LRU Cache, TTL Key-Value Store, and generator pipeline — look independent. They share a deeper connection: one of them can back another, and the mechanism that enables this is a structural protocol.</p>
+
+    <p>Python's <code>Protocol</code> is structural typing. Unlike an abstract base class, a Protocol doesn't require explicit inheritance — any class that implements the right methods satisfies it automatically. This is duck typing with a static type-checker opt-in.</p>
+
+<pre><code><span class="code-keyword">from</span> typing <span class="code-keyword">import</span> Protocol, runtime_checkable, Iterable
+
+<span class="code-highlight">@runtime_checkable</span>
+<span class="code-keyword">class</span> <span class="code-fn">Storage</span>[KT, VT](Protocol):
+    <span class="code-keyword">def</span> <span class="code-fn">__setitem__</span>(self, key: KT, value: VT) -> <span class="code-keyword">None</span>: ...
+    <span class="code-keyword">def</span> <span class="code-fn">__getitem__</span>(self, key: KT) -> VT: ...          <span class="code-comment"># raises KeyError on miss</span>
+    <span class="code-keyword">def</span> <span class="code-fn">__delitem__</span>(self, key: KT) -> <span class="code-keyword">None</span>: ...
+    <span class="code-keyword">def</span> <span class="code-fn">__contains__</span>(self, key: object) -> bool: ...
+    <span class="code-keyword">def</span> <span class="code-fn">__len__</span>(self) -> int: ...
+    <span class="code-keyword">def</span> <span class="code-fn">keys</span>(self) -> Iterable[KT]: ...</code></pre>
+
+    <p>This is exactly the interface a Python <code>dict</code> satisfies. And <code>@runtime_checkable</code> makes that verifiable at runtime — not just at type-check time:</p>
+
+<pre class="accent2"><code><span class="code-fn">print</span>(<span class="code-fn">isinstance</span>({}, Storage))  <span class="code-comment"># → True</span></code></pre>
+
+    <p>The payoff comes later. The TTL Store's constructor takes a <code>Storage[KT, CacheEntry[VT]]</code>. That means it can accept a plain <code>dict</code> <em>or</em> an <code>LRUCache</code> — as long as the cache also satisfies the protocol. Building the LRU Cache to satisfy <code>Storage</code> is Chapter 02's goal. Using that to compose the two into one system is Chapter 05's.</p>
+
+    <div class="callout insight" data-label="Protocol vs ABC">
+      <p>An abstract base class (ABC) requires explicit <code>class MyStore(ABC)</code> and <code>@abstractmethod</code>. A Protocol requires nothing — any class with the right methods qualifies. The tradeoff: ABCs catch missing methods at class definition time; Protocols catch them at type-check time (mypy) or not at all without <code>@runtime_checkable</code>. Protocols are the right choice when you want to retrofit an interface onto types you don't control — like <code>dict</code>.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 2 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 02</div>
+    <h2>LRU Cache — <em>O(1) and Protocol-Compliant</em></h2>
+
+    <p>An LRU Cache keeps the N most recently accessed entries. On capacity overflow, the least recently used entry is evicted. The constraint is that both <code>get()</code> and <code>put()</code> must be O(1) — which rules out any approach that involves scanning.</p>
+
+    <h3>The O(1) Invariant</h3>
+
+    <p>The solution is two structures working in concert: a <code>dict</code> for O(1) key lookup, and a doubly-linked list for O(1) recency ordering. The dict maps each key to its node. The list maintains a strict invariant: <strong>head.next is the LRU entry, tail.prev is the MRU entry</strong>. Every access moves its node to the MRU position; every eviction removes from the LRU position.</p>
+
+    <div class="arch-diagram">
+<pre><code>head ←→ [A] ←→ [C] ←→ [B] ←→ tail
+         LRU              MRU
+
+dict = { "A": &lt;node_A&gt;, "C": &lt;node_C&gt;, "B": &lt;node_B&gt; }
+
+get("C"):  unlink C, relink before tail  →  head ←→ [A] ←→ [B] ←→ [C] ←→ tail
+put("D"):  add D before tail, evict head.next (A)  →  [B] ←→ [C] ←→ [D]</code></pre>
+    </div>
+
+    <h3>Node and Deque — Keeping Pointers Symmetric</h3>
+
+    <p>The <code>assign_next</code> method on <code>Node</code> is the structural linchpin: it sets both the forward pointer on the caller and the backward pointer on the target in a single call. Every pointer operation goes through it, so <code>next</code> and <code>prev</code> are always symmetric. A broken invariant cannot be silently introduced.</p>
+
+<pre><code><span class="code-keyword">class</span> <span class="code-fn">Node</span>[KV, VT]:
+    <span class="code-keyword">def</span> <span class="code-fn">__init__</span>(self, key: KV, value: VT):
+        self.key, self.value = key, value
+        self.next: <span class="code-type">Node[KV, VT] | None</span> = <span class="code-keyword">None</span>
+        self.prev: <span class="code-type">Node[KV, VT] | None</span> = <span class="code-keyword">None</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">assign_next</span>(self, node: <span class="code-highlight">Node[KV, VT]</span>) -> <span class="code-keyword">None</span>:  <span class="code-comment"># O(1)</span>
+        self.next = node
+        node.prev = self
+
+
+<span class="code-keyword">class</span> <span class="code-fn">Deque</span>[KV, VT]:
+    <span class="code-keyword">def</span> <span class="code-fn">__init__</span>(self):
+        self._head = <span class="code-fn">Node</span>[KV, VT](<span class="code-keyword">None</span>, <span class="code-keyword">None</span>)  <span class="code-comment"># LRU sentinel</span>
+        self._tail = <span class="code-fn">Node</span>[KV, VT](<span class="code-keyword">None</span>, <span class="code-keyword">None</span>)  <span class="code-comment"># MRU sentinel</span>
+        self._head.<span class="code-fn">assign_next</span>(self._tail)
+
+    <span class="code-keyword">def</span> <span class="code-fn">remove</span>(self, node: Node[KV, VT]) -> <span class="code-keyword">None</span>:       <span class="code-comment"># O(1)</span>
+        node.prev.<span class="code-fn">assign_next</span>(node.next)
+        node.prev = node.next = <span class="code-keyword">None</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">add_to_end</span>(self, node: Node[KV, VT]) -> <span class="code-keyword">None</span>:   <span class="code-comment"># O(1)</span>
+        self._tail.prev.<span class="code-fn">assign_next</span>(node)
+        node.<span class="code-fn">assign_next</span>(self._tail)
+
+    <span class="code-keyword">def</span> <span class="code-fn">move_to_end</span>(self, node: Node[KV, VT]) -> <span class="code-keyword">None</span>:  <span class="code-comment"># O(1)</span>
+        self.<span class="code-fn">remove</span>(node)
+        self.<span class="code-fn">add_to_end</span>(node)
+
+    <span class="code-keyword">def</span> <span class="code-fn">pop_front</span>(self) -> Node[KV, VT]:                 <span class="code-comment"># O(1) — evicts LRU</span>
+        node = self._head.next
+        self.<span class="code-fn">remove</span>(node)
+        <span class="code-keyword">return</span> node</code></pre>
+
+    <h3>Implementing the Storage Protocol</h3>
+
+    <p>For <code>LRUCache</code> to be usable as a backing store for <code>KVStore</code>, it must satisfy <code>Storage[KV, VT]</code>. That means implementing the dict-protocol dunder methods alongside the cache-friendly <code>get(key, default)</code> API.</p>
+
+    <p>The two APIs serve different callers. Cache clients want <code>get(key, default=None)</code> — a miss returns a default, not a crash. The <code>Storage</code> protocol wants <code>__getitem__</code> — a miss raises <code>KeyError</code>, consistent with how <code>dict</code> behaves. Both coexist; neither replaces the other.</p>
+
+<pre><code><span class="code-keyword">import</span> threading
+
+<span class="code-keyword">class</span> <span class="code-fn">LRUCache</span>[KV, VT]:
+    <span class="code-keyword">def</span> <span class="code-fn">__init__</span>(self, capacity: int):
+        <span class="code-keyword">if</span> capacity <= <span class="code-number">0</span>:
+            <span class="code-keyword">raise</span> <span class="code-fn">ValueError</span>(<span class="code-string">f"capacity must be > 0, got {capacity}"</span>)
+        self._capacity = capacity
+        self._cache: dict[KV, Node[KV, VT]] = {}
+        self._deque: Deque[KV, VT] = <span class="code-fn">Deque</span>()
+        self._lock = threading.<span class="code-fn">Lock</span>()
+
+    <span class="code-keyword">def</span> <span class="code-fn">_promote</span>(self, key: KV, value: VT) -> <span class="code-keyword">None</span>:
+        <span class="code-comment"># Internal: upsert + move to MRU. Must be called under self._lock.</span>
+        <span class="code-keyword">if</span> key <span class="code-keyword">in</span> self._cache:
+            self._deque.<span class="code-fn">remove</span>(self._cache[key])
+        node = <span class="code-fn">Node</span>(key, value)
+        self._deque.<span class="code-fn">add_to_end</span>(node)
+        self._cache[key] = node
+        <span class="code-keyword">if</span> <span class="code-fn">len</span>(self._cache) > self._capacity:
+            evicted = self._deque.<span class="code-fn">pop_front</span>()
+            <span class="code-keyword">del</span> self._cache[evicted.key]
+
+    <span class="code-comment"># ── Cache API ──────────────────────────────────────────</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">put</span>(self, key: KV, value: VT) -> <span class="code-keyword">None</span>:                        <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            self.<span class="code-fn">_promote</span>(key, value)
+
+    <span class="code-keyword">def</span> <span class="code-fn">get</span>(self, key: KV, default: VT | <span class="code-keyword">None</span> = <span class="code-keyword">None</span>) -> VT | <span class="code-keyword">None</span>:  <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">if</span> key <span class="code-keyword">not in</span> self._cache:
+                <span class="code-keyword">return</span> default
+            self._deque.<span class="code-fn">move_to_end</span>(self._cache[key])
+            <span class="code-keyword">return</span> self._cache[key].value
+
+    <span class="code-comment"># ── Storage Protocol ───────────────────────────────────</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">__setitem__</span>(self, key: KV, value: VT) -> <span class="code-keyword">None</span>:              <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            self.<span class="code-fn">_promote</span>(key, value)
+
+    <span class="code-keyword">def</span> <span class="code-fn">__getitem__</span>(self, key: KV) -> VT:                             <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">if</span> key <span class="code-keyword">not in</span> self._cache:
+                <span class="code-keyword">raise</span> <span class="code-fn">KeyError</span>(key)
+            self._deque.<span class="code-fn">move_to_end</span>(self._cache[key])
+            <span class="code-keyword">return</span> self._cache[key].value
+
+    <span class="code-keyword">def</span> <span class="code-fn">__delitem__</span>(self, key: KV) -> <span class="code-keyword">None</span>:                          <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">if</span> key <span class="code-keyword">not in</span> self._cache:
+                <span class="code-keyword">raise</span> <span class="code-fn">KeyError</span>(key)
+            self._deque.<span class="code-fn">remove</span>(self._cache[key])
+            <span class="code-keyword">del</span> self._cache[key]
+
+    <span class="code-keyword">def</span> <span class="code-fn">__contains__</span>(self, key: object) -> bool:                      <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">return</span> key <span class="code-keyword">in</span> self._cache
+
+    <span class="code-keyword">def</span> <span class="code-fn">__len__</span>(self) -> int:                                          <span class="code-comment"># O(1)</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">return</span> <span class="code-fn">len</span>(self._cache)
+
+    <span class="code-keyword">def</span> <span class="code-fn">keys</span>(self) -> list[KV]:                                        <span class="code-comment"># O(N) snapshot</span>
+        <span class="code-keyword">with</span> self._lock:
+            <span class="code-keyword">return</span> <span class="code-fn">list</span>(self._cache.keys())
+
+<span class="code-comment"># Structural conformance — no inheritance needed:</span>
+<span class="code-fn">print</span>(<span class="code-fn">isinstance</span>(<span class="code-fn">LRUCache</span>(<span class="code-number">10</span>), Storage))  <span class="code-comment"># → True</span></code></pre>
+
+    <div class="callout insight" data-label="Why _promote Instead of Inlining">
+      <p>Both <code>put()</code> and <code>__setitem__</code> do exactly the same thing. Rather than duplicating the logic or calling one from the other (which would acquire the lock twice), the shared logic lives in <code>_promote()</code> which is called under the lock by both. This is the correct way to factor out lock-protected shared logic in Python — never call a public method from another public method if both acquire the same non-reentrant lock.</p>
+    </div>
+
+    <h3>Thread Safety — Why a Single Lock Is Enough</h3>
+
+    <p>The <code>dict</code> and <code>Deque</code> must always agree. A <code>get()</code> that moves a node in the deque after finding it in the dict, or a <code>put()</code> that inserts into the deque but fails before updating the dict — either leaves the cache in a broken state. A single <code>threading.Lock()</code> wrapping each public operation makes both structures update atomically.</p>
+
+    <p>For read-heavy workloads, a read-write lock (<code>threading.RLock</code> is not the same thing — Python has no stdlib RWLock) could improve throughput by allowing concurrent reads. But it adds complexity: <code>get()</code> also writes (it moves the node to MRU), so it cannot hold only a read lock. In practice, a plain <code>Lock</code> and appropriately sized capacity is the right starting point.</p>
+
+    <h3>The Test Invariant That Bites</h3>
+
+    <p>The one invariant that consistently trips people up: <strong>updating an existing key must not trigger eviction of a different key</strong>. Consider capacity=2, keys A and B both present. Calling <code>put("B", new_value)</code> 200 times must not evict A — it's a re-promotion to MRU, not a new entry. The test that catches this:</p>
+
+<pre class="accent2"><code>cache = <span class="code-fn">LRUCache</span>[str, str](<span class="code-number">2</span>)
+cache.<span class="code-fn">put</span>(<span class="code-string">"A"</span>, <span class="code-string">"a"</span>)
+cache.<span class="code-fn">put</span>(<span class="code-string">"B"</span>, <span class="code-string">"b"</span>)
+<span class="code-keyword">for</span> i <span class="code-keyword">in</span> <span class="code-fn">range</span>(<span class="code-number">200</span>):
+    cache.<span class="code-fn">put</span>(<span class="code-string">"B"</span>, <span class="code-fn">str</span>(i))
+<span class="code-keyword">assert</span> cache.<span class="code-fn">get</span>(<span class="code-string">"A"</span>) == <span class="code-string">"a"</span>   <span class="code-comment"># must still be present</span>
+<span class="code-keyword">assert</span> cache.<span class="code-fn">get</span>(<span class="code-string">"B"</span>) == <span class="code-string">"199"</span>  <span class="code-comment"># latest value</span></code></pre>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 3 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 03</div>
+    <h2>TTL Key-Value Store — <em>Heap-Based Lazy Deletion</em></h2>
+
+    <p>LRU evicts by access pattern — unused entries get pushed out. TTL evicts by time — entries expire after a fixed duration regardless of how often they're accessed. A configuration value read on every request should still expire after 5 minutes even though it's always the MRU entry. The two policies are not interchangeable and should not be conflated.</p>
+
+    <h3>The Data Model — Frozen Dataclasses</h3>
+
+    <p>Cache entries are frozen dataclasses. <code>frozen=True</code> makes the instance immutable after creation: Python generates a <code>__hash__</code> and overrides <code>__setattr__</code> to raise <code>FrozenInstanceError</code> on mutation. An entry's TTL and value cannot be accidentally modified through an alias.</p>
+
+<pre><code><span class="code-keyword">from</span> dataclasses <span class="code-keyword">import</span> dataclass, field
+<span class="code-keyword">from</span> datetime <span class="code-keyword">import</span> datetime, timedelta
+
+<span class="code-highlight">@dataclass(frozen=True)</span>
+<span class="code-keyword">class</span> <span class="code-fn">MetaData</span>:
+    expires_at: datetime
+
+<span class="code-highlight">@dataclass(frozen=True)</span>
+<span class="code-keyword">class</span> <span class="code-fn">CacheEntry</span>[VT]:
+    value: VT
+    metadata: MetaData
+
+<span class="code-comment"># Usage: wrap any value with a TTL</span>
+entry = <span class="code-fn">CacheEntry</span>(
+    value=<span class="code-string">"api-result"</span>,
+    metadata=<span class="code-fn">MetaData</span>(expires_at=datetime.<span class="code-fn">now</span>() + <span class="code-fn">timedelta</span>(seconds=<span class="code-number">30</span>))
+)</code></pre>
+
+    <h3>The Problem with a Sorted Deque</h3>
+
+    <p>A deque sorted by <code>expires_at</code> is the intuitive approach. The front holds the soonest-to-expire entry; sweeping expired entries is just popping from the front. But <code>put()</code> with an existing key is a problem. You must find and remove the old entry from the middle of the deque — O(N) — then find the correct sorted position for the new entry — also O(N). Updates are expensive.</p>
+
+    <p>Worse, the linear scan across all positions uses a counter-loop because <code>deque</code> doesn't support binary search. The actual implementation ends up with two O(N) passes on every update — exactly the wrong tradeoff for a structure that's supposed to be fast at writes.</p>
+
+    <h3>The Min-Heap with Version-Based Lazy Deletion</h3>
+
+    <p>A min-heap gives O(log N) push. The problem it introduces is removal: Python's <code>heapq</code> has no O(log N) deletion by value. When a key is re-inserted with a new TTL, the old heap entry becomes stale but cannot be efficiently removed.</p>
+
+    <p>The solution is lazy deletion: don't remove stale entries immediately. Leave them in the heap. When we sweep on <code>get()</code>, check whether each popped entry is still the <em>current</em> version for its key. If not, discard it. This requires a monotonic version counter and a version registry.</p>
+
+<pre><code><span class="code-highlight">@dataclass(frozen=True, order=True)</span>
+<span class="code-keyword">class</span> <span class="code-fn">_HeapEntry</span>[KT]:
+    expires_at: datetime               <span class="code-comment"># primary sort key</span>
+    version: int                       <span class="code-comment"># secondary sort key; also the stale-check discriminator</span>
+    key: KT = <span class="code-fn">field</span>(compare=<span class="code-keyword">False</span>)   <span class="code-comment"># excluded from heap ordering</span></code></pre>
+
+    <p><code>dataclass(order=True)</code> generates <code>__lt__</code> and friends using fields in declaration order, skipping those marked <code>compare=False</code>. This is exactly what <code>heapq</code> needs. The <code>version</code> field as the secondary key breaks ties when two entries share an identical <code>expires_at</code> — without it, Python would attempt to compare <code>KT</code> values, which may not support ordering.</p>
+
+<pre><code><span class="code-keyword">import</span> heapq
+
+<span class="code-keyword">class</span> <span class="code-fn">KVStore</span>[KT, VT]:
+    <span class="code-keyword">def</span> <span class="code-fn">__init__</span>(self, store: Storage[KT, CacheEntry[VT]]):
+        self._store = store
+        self._heap: list[_HeapEntry[KT]] = []
+        self._version: dict[KT, int] = {}  <span class="code-comment"># key → active version</span>
+        self._clock = <span class="code-number">0</span>                    <span class="code-comment"># monotonic counter</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">put</span>(self, key: KT, entry: CacheEntry[VT]) -> <span class="code-keyword">None</span>:   <span class="code-comment"># O(log N)</span>
+        self._clock += <span class="code-number">1</span>
+        self._version[key] = self._clock
+        self._store[key] = entry
+        heapq.<span class="code-fn">heappush</span>(
+            self._heap,
+            <span class="code-fn">_HeapEntry</span>(entry.metadata.expires_at, self._clock, key)
+        )
+        <span class="code-comment"># The old heap entry for this key (if any) is now stale.</span>
+        <span class="code-comment"># It will be identified and discarded by _sweep().</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">get</span>(self, key: KT) -> CacheEntry[VT] | <span class="code-keyword">None</span>:          <span class="code-comment"># O(k log N) amortized</span>
+        self.<span class="code-fn">_sweep</span>()
+        <span class="code-keyword">return</span> self._store[key] <span class="code-keyword">if</span> key <span class="code-keyword">in</span> self._store <span class="code-keyword">else None</span>
+
+    <span class="code-keyword">def</span> <span class="code-fn">_sweep</span>(self) -> <span class="code-keyword">None</span>:
+        now = datetime.<span class="code-fn">now</span>()
+        <span class="code-keyword">while</span> self._heap:
+            top = self._heap[<span class="code-number">0</span>]
+            <span class="code-keyword">if</span> top.expires_at > now:
+                <span class="code-keyword">break</span>                          <span class="code-comment"># heap min is not expired — stop</span>
+            heapq.<span class="code-fn">heappop</span>(self._heap)
+
+            <span class="code-keyword">if</span> self._version.<span class="code-fn">get</span>(top.key) != top.version:
+                <span class="code-keyword">continue</span>                       <span class="code-comment"># stale entry from an overwrite — skip</span>
+
+            <span class="code-keyword">if</span> top.key <span class="code-keyword">in</span> self._store:
+                <span class="code-keyword">del</span> self._store[top.key]
+            <span class="code-keyword">del</span> self._version[top.key]</code></pre>
+
+    <h3>Why the Version Discriminator Is Necessary</h3>
+
+    <p>Without the version check, consider this sequence: <code>put("k", ttl=5s)</code> at t=0, then <code>put("k", ttl=60s)</code> at t=1. The heap now contains two entries for <code>"k"</code>: one expiring at t=5, one at t=61. At t=6, <code>_sweep()</code> pops the first entry. Should it delete <code>"k"</code> from the store?</p>
+
+    <p>Without a version check, the answer is yes — and that's wrong. The entry at t=61 is still valid. The version check resolves this cleanly: the stored version is <code>2</code> (set by the second put), the popped heap entry carries version <code>1</code>. They don't match — this is a stale entry, skip it.</p>
+
+    <p>Using <code>expires_at</code> as the discriminator instead of version would work in most cases, but breaks when two puts happen close enough together that floating-point datetime precision produces identical timestamps. The version counter is a strictly monotonic integer — it cannot collide.</p>
+
+    <table class="comparison">
+      <thead>
+        <tr><th>Operation</th><th>Sorted Deque</th><th>Min-Heap + Lazy Delete</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>put() — new key</td><td>O(N) sorted insert</td><td>O(log N) heappush</td></tr>
+        <tr><td>put() — existing key</td><td>O(N) find + O(N) re-insert</td><td>O(log N) heappush; old entry left stale</td></tr>
+        <tr><td>get() — sweep cost</td><td>O(k) — k expired entries at front</td><td>O(k log N) — k expired + stale pops</td></tr>
+        <tr><td>Space</td><td>O(N)</td><td>O(N + S) — S = stale entries pending sweep</td></tr>
+      </tbody>
+    </table>
+
+    <p>The heap approach trades a slightly higher sweep cost (log N factor per expired entry) for dramatically better put() performance. For systems where writes are frequent and keys are frequently re-set with new TTLs, this is the right trade.</p>
+
+    <div class="callout info" data-label="Heap Compaction">
+      <p>Stale entries accumulate in the heap between sweeps. If <code>put()</code> is called far more often than <code>get()</code>, the heap can grow to O(total puts) rather than O(live keys). A simple heuristic: if <code>len(heap) > 2 × len(store)</code>, run a full compaction pass — rebuild the heap from only the active versions. This is O(N log N) but amortized infrequently.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 4 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 04</div>
+    <h2>Typed Generator Pipeline — <em>Generator[U, bool, None]</em></h2>
+
+    <p>A pipeline without flow control is a time bomb. A fast producer feeding a slow consumer accumulates items in memory silently — no error, no warning — until the process crashes or the OS starts swapping. For synchronous pipelines, Python's generator <code>send()</code> protocol provides a native backpressure mechanism.</p>
+
+    <h3>Generator[YieldType, SendType, ReturnType]</h3>
+
+    <p>Most generators are typed as <code>Iterator[T]</code>, which only describes what they yield. The full <code>Generator[Y, S, R]</code> type encodes the complete contract: what the generator yields (<code>Y</code>), what it receives via <code>send()</code> (<code>S</code>), and what it returns when exhausted (<code>R</code>). When <code>S</code> is something other than <code>None</code>, the generator is a two-way channel.</p>
+
+<pre class="accent2"><code><span class="code-keyword">from</span> typing <span class="code-keyword">import</span> Generator
+
+<span class="code-comment"># Generator[YieldType, SendType, ReturnType]</span>
+<span class="code-keyword">def</span> <span class="code-fn">echo</span>() -> Generator[str, str, <span class="code-keyword">None</span>]:
+    received = <span class="code-keyword">yield</span> <span class="code-string">"ready"</span>   <span class="code-comment"># yields str, receives str via send()</span>
+    <span class="code-keyword">yield</span> <span class="code-string">f"you sent: {received}"</span>
+
+gen = <span class="code-fn">echo</span>()
+<span class="code-fn">next</span>(gen)              <span class="code-comment"># → "ready"  (primes to the first yield)</span>
+gen.<span class="code-fn">send</span>(<span class="code-string">"hello"</span>)    <span class="code-comment"># → "you sent: hello"</span></code></pre>
+
+    <p>The expression <code>received = yield value</code> does two things: it sends <code>value</code> out, and when resumed via <code>send(x)</code>, <code>received</code> is assigned <code>x</code>. You must call <code>next(gen)</code> before the first <code>send(x)</code> — the generator hasn't reached the yield yet, so there's nowhere to deposit the sent value.</p>
+
+    <h3>Generic Producer, Transformer, and Consumer</h3>
+
+    <p>With Python 3.12's generic function syntax, the full pipeline is typed end-to-end. The type parameters make the data flow explicit: a <code>producer[T]</code> feeds a <code>transformer[T, U]</code> which feeds a <code>consumer[U]</code>.</p>
+
+<pre><code><span class="code-keyword">from</span> typing <span class="code-keyword">import</span> Callable, Generator, Iterable, Iterator
+
+<span class="code-keyword">def</span> <span class="code-fn">producer</span>[T](items: Iterable[T], stats: dict) -> Iterator[T]:
+    <span class="code-keyword">for</span> item <span class="code-keyword">in</span> items:
+        stats[<span class="code-string">"produced"</span>] += <span class="code-number">1</span>
+        <span class="code-keyword">yield</span> item
+
+
+<span class="code-keyword">def</span> <span class="code-fn">transformer</span>[T, U](
+    source: Iterator[T],
+    predicate: Callable[[T], bool],
+    transform: Callable[[T], U],
+    stats: dict,
+) -> Generator[U | <span class="code-keyword">None</span>, bool, <span class="code-keyword">None</span>]:
+    <span class="code-keyword">for</span> item <span class="code-keyword">in</span> source:
+        <span class="code-keyword">if not</span> <span class="code-fn">predicate</span>(item):
+            stats[<span class="code-string">"dropped"</span>] += <span class="code-number">1</span>
+            <span class="code-keyword">continue</span>
+        <span class="code-highlight">should_drop: bool = yield <span class="code-fn">transform</span>(item)</span>  <span class="code-comment"># ← two-way channel</span>
+        <span class="code-keyword">if</span> should_drop:
+            stats[<span class="code-string">"dropped"</span>] += <span class="code-number">1</span>
+    <span class="code-keyword">yield None</span>  <span class="code-comment"># sentinel: source exhausted</span>
+
+
+<span class="code-keyword">def</span> <span class="code-fn">consumer</span>[U](
+    pipeline: Generator[U | <span class="code-keyword">None</span>, bool, <span class="code-keyword">None</span>],
+    stats: dict,
+    buffer_size: int = <span class="code-number">5</span>,
+) -> list[U]:
+    results: list[U] = []
+    value = <span class="code-fn">next</span>(pipeline, <span class="code-keyword">None</span>)          <span class="code-comment"># prime the generator</span>
+    <span class="code-keyword">while</span> value <span class="code-keyword">is not None</span>:
+        results.<span class="code-fn">append</span>(value)
+        stats[<span class="code-string">"consumed"</span>] += <span class="code-number">1</span>
+        buffer_full = <span class="code-fn">len</span>(results) % buffer_size == <span class="code-number">0</span>
+        value = pipeline.<span class="code-fn">send</span>(buffer_full)   <span class="code-comment"># True → transformer drops next item</span>
+    <span class="code-keyword">return</span> results</code></pre>
+
+    <p>The <code>Generator[U | None, bool, None]</code> return type on <code>transformer</code> is precise: it yields either a transformed value or a <code>None</code> sentinel, receives a <code>bool</code> backpressure signal, and returns <code>None</code> on exhaustion. The <code>| None</code> in the yield type is the cost of using <code>None</code> as a sentinel — a production codebase would use a typed sentinel class instead to avoid ambiguity when <code>U</code> is itself nullable.</p>
+
+    <h3>Context Manager for Lifecycle</h3>
+
+    <p><code>GeneratorExit</code> must be handled separately in the context manager. It is raised inside the generator when <code>gen.close()</code> is called — not an error, just early termination. Conflating it with <code>Exception</code> would suppress legitimate cleanup.</p>
+
+<pre class="accent2"><code><span class="code-keyword">from</span> contextlib <span class="code-keyword">import</span> contextmanager
+
+<span class="code-highlight">@contextmanager</span>
+<span class="code-keyword">def</span> <span class="code-fn">pipeline_context</span>(name: str):
+    stats = {<span class="code-string">"produced"</span>: <span class="code-number">0</span>, <span class="code-string">"consumed"</span>: <span class="code-number">0</span>, <span class="code-string">"dropped"</span>: <span class="code-number">0</span>}
+    <span class="code-keyword">try</span>:
+        <span class="code-keyword">yield</span> stats
+    <span class="code-keyword">except</span> GeneratorExit:
+        <span class="code-keyword">pass</span>                     <span class="code-comment"># gen.close() called — not an error</span>
+    <span class="code-keyword">except</span> Exception <span class="code-keyword">as</span> e:
+        <span class="code-fn">print</span>(<span class="code-string">f"[{name}] error: {e}"</span>)
+        <span class="code-keyword">raise</span>
+    <span class="code-keyword">finally</span>:
+        <span class="code-fn">print</span>(<span class="code-string">f"[{name}] done — {stats}"</span>)
+
+
+<span class="code-keyword">def</span> <span class="code-fn">run_pipeline</span>[T, U](
+    items: Iterable[T],
+    predicate: Callable[[T], bool],
+    transform: Callable[[T], U],
+    buffer_size: int = <span class="code-number">5</span>,
+) -> list[U]:
+    <span class="code-keyword">with</span> <span class="code-fn">pipeline_context</span>(<span class="code-string">"main"</span>) <span class="code-keyword">as</span> stats:
+        source = <span class="code-fn">producer</span>(items, stats)
+        pipe   = <span class="code-fn">transformer</span>(source, predicate, transform, stats)
+        <span class="code-keyword">return</span> <span class="code-fn">consumer</span>(pipe, stats, buffer_size)
+
+
+<span class="code-comment"># Example: evens squared, buffer_size=5</span>
+results = <span class="code-fn">run_pipeline</span>(
+    items=<span class="code-fn">range</span>(<span class="code-number">20</span>),
+    predicate=<span class="code-keyword">lambda</span> x: x % <span class="code-number">2</span> == <span class="code-number">0</span>,
+    transform=<span class="code-keyword">lambda</span> x: x ** <span class="code-number">2</span>,
+)</code></pre>
+
+    <div class="callout warn" data-label="The None Sentinel Trap">
+      <p>Using <code>None</code> as an end-of-stream sentinel means the pipeline cannot process items where <code>transform(item)</code> legitimately returns <code>None</code>. A typed sentinel — <code>class _Exhausted: ...</code>; <code>_EXHAUSTED = _Exhausted()</code> — eliminates the ambiguity. The consumer checks <code>isinstance(value, _Exhausted)</code> instead of <code>value is None</code>. The downside is verbosity; the upside is a pipeline that can carry any type through without special-casing.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAPTER 5 -->
+  <div class="chapter">
+    <div class="chapter-number">Chapter 05</div>
+    <h2>Composition — <em>TTL Backed by LRU</em></h2>
+
+    <p>The Storage Protocol was defined in Chapter 01 precisely for this moment. <code>KVStore</code> takes any <code>Storage[KT, CacheEntry[VT]]</code>. <code>LRUCache</code> now satisfies <code>Storage</code>. The composition is two lines:</p>
+
+<pre><code><span class="code-keyword">from</span> datetime <span class="code-keyword">import</span> timedelta
+
+<span class="code-comment"># A TTL store whose backing memory is bounded by an LRU Cache</span>
+lru: <span class="code-fn">LRUCache</span>[str, CacheEntry[str]] = <span class="code-fn">LRUCache</span>(capacity=<span class="code-number">500</span>)
+store: <span class="code-fn">KVStore</span>[str, str] = <span class="code-fn">KVStore</span>(store=lru)
+
+<span class="code-keyword">assert</span> <span class="code-fn">isinstance</span>(lru, Storage)   <span class="code-comment"># True — structural typing at work</span>
+
+<span class="code-comment"># Two eviction policies, one system:</span>
+<span class="code-comment"># LRU evicts entries beyond capacity=500 (access-order policy)</span>
+<span class="code-comment"># TTL evicts entries after their expiry (time policy)</span>
+store.<span class="code-fn">put</span>(<span class="code-string">"config:rate_limit"</span>, <span class="code-fn">CacheEntry</span>(
+    value=<span class="code-string">"1000/min"</span>,
+    metadata=<span class="code-fn">MetaData</span>(expires_at=datetime.<span class="code-fn">now</span>() + <span class="code-fn">timedelta</span>(minutes=<span class="code-number">5</span>))
+))</code></pre>
+
+    <p>This works without any adapter code because <code>LRUCache.__setitem__</code>, <code>__getitem__</code>, <code>__delitem__</code>, <code>__contains__</code>, <code>__len__</code>, and <code>keys()</code> are all present and carry the right signatures. The <code>Storage</code> Protocol makes this verifiable statically and at runtime.</p>
+
+    <h3>Plugging the Pipeline In</h3>
+
+    <p>The store and the pipeline connect naturally. A typed producer pulls from the <code>KVStore</code>, calling an upstream fetch on cache miss and caching the result. The consumer drives it through <code>send()</code>-gated backpressure. The entire system is typed end-to-end.</p>
+
+<pre class="accent2"><code><span class="code-keyword">def</span> <span class="code-fn">cached_producer</span>[V](
+    keys: Iterable[str],
+    store: <span class="code-fn">KVStore</span>[str, V],
+    ttl: timedelta,
+    fetch: Callable[[str], V],
+    stats: dict,
+) -> Iterator[V]:
+    <span class="code-keyword">for</span> key <span class="code-keyword">in</span> keys:
+        cached = store.<span class="code-fn">get</span>(key)
+        <span class="code-keyword">if</span> cached <span class="code-keyword">is None</span>:
+            value = <span class="code-fn">fetch</span>(key)
+            store.<span class="code-fn">put</span>(key, <span class="code-fn">CacheEntry</span>(value, <span class="code-fn">MetaData</span>(datetime.<span class="code-fn">now</span>() + ttl)))
+        <span class="code-keyword">else</span>:
+            value = cached.value
+        stats[<span class="code-string">"produced"</span>] += <span class="code-number">1</span>
+        <span class="code-keyword">yield</span> value
+
+
+<span class="code-comment"># Wire it all together</span>
+lru   = <span class="code-fn">LRUCache</span>[str, CacheEntry[str]](capacity=<span class="code-number">500</span>)
+store = <span class="code-fn">KVStore</span>[str, str](store=lru)
+
+<span class="code-keyword">with</span> <span class="code-fn">pipeline_context</span>(<span class="code-string">"fetch"</span>) <span class="code-keyword">as</span> stats:
+    source = <span class="code-fn">cached_producer</span>(keys, store, ttl=<span class="code-fn">timedelta</span>(seconds=<span class="code-number">30</span>), fetch=api_call, stats=stats)
+    pipe   = <span class="code-fn">transformer</span>(source, predicate=is_valid, transform=normalize, stats=stats)
+    output = <span class="code-fn">consumer</span>(pipe, stats, buffer_size=<span class="code-number">10</span>)</code></pre>
+
+    <h3>What Each Layer Owns</h3>
+
+    <div class="arch-diagram">
+<pre><code>Upstream keys
+      │
+      ▼
+[cached_producer]  ← checks KVStore; fetches and caches on miss
+      │ Iterator[V]
+      ▼
+[transformer[V, U]] ← filter + map; backpressure via send()
+      │ Generator[U | None, bool, None]
+      ▼
+[consumer[U]]       ← drives pipeline; sends buffer_full signal
+      │
+      ▼
+results: list[U]
+
+─── Inside KVStore ──────────────────────────────────────────
+KVStore._store = LRUCache(capacity=500)
+  → LRU evicts beyond 500 entries      (access-order policy)
+  → TTL evicts after expiry            (time policy)
+  → Both via the Storage Protocol      (structural composition)</code></pre>
+    </div>
+
+    <p>Each layer owns exactly one axis of control. LRU owns capacity. TTL owns freshness. The pipeline owns throughput. None of them knows about the others. The <code>Storage</code> Protocol is the only shared contract — and it's structural, so adding a fourth layer (say, a write-through cache) requires no changes to any existing type.</p>
+
+    <blockquote>
+      <p>The value of a protocol is not in what it forces you to implement — it's in what it lets you swap out later without rewriting anything upstream.</p>
+    </blockquote>
+  </div>
+
+</div>
+</article>
+
+<footer>
+  <p>LRU Cache satisfying a Storage Protocol. TTL Store with heap-based lazy deletion. Typed generator backpressure. Three primitives composed into one system via structural typing.</p>
+</footer>
+
+</body>
+</html>
